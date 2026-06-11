@@ -16,6 +16,7 @@ This is a **personal app for a single user**. No accounts, no social, no analyti
 |---|---|---|
 | Design | Spec + roadmap | ✅ done |
 | **Phase 1** | Checklist MVP — local-only, manual launch | 🟡 plan ready, blocked on Xcode |
+| Phase 1.5 | One-shot SOPs (临时 SOP) — pinned home section + delete-on-complete | ⏳ planned |
 | Phase 2A | Categories + home grid | ⏳ planned |
 | Phase 2B | Flow type + collapsed-hybrid execution | ⏳ planned |
 | Phase 2C | Nested sub-SOPs (recursive) | ⏳ planned |

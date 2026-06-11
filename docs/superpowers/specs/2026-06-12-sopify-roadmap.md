@@ -11,10 +11,10 @@ This roadmap breaks the design spec into **independently shippable sub-phases**.
 ## Phase Map
 
 ```
-Phase 1  ──────►  Phase 2A  ──►  Phase 2B  ──►  Phase 2C  ──►  Phase 3A  ──►  Phase 3B  ──►  Phase 4A  ──►  Phase 4B  ──►  v1.0 ship
-checklist        categories     flow type      nested SOP     branching      triggers       CloudKit       import/export
-MVP              + home grid    + collapsed    (recursive)    (interactive)  (3 kinds)      sync           + diary + iPad
-                                hybrid                                                                       polish
+Phase 1  ──►  Phase 1.5  ──►  Phase 2A  ──►  Phase 2B  ──►  Phase 2C  ──►  Phase 3A  ──►  Phase 3B  ──►  Phase 4A  ──►  Phase 4B  ──►  v1.0 ship
+checklist     one-shot       categories     flow type      nested SOP     branching      triggers       CloudKit       diary + iPad
+MVP           SOP            + home grid    + collapsed    (recursive)    (interactive)  (3 kinds)      sync           polish
+                                            hybrid                                                     + import/export
 ```
 
 Each arrow = a separately committed implementable. The user could stop at any arrow with a working app.
@@ -30,6 +30,32 @@ Each arrow = a separately committed implementable. The user could stop at any ar
 **Tasks**: 16 (bootstrap → models → list/edit/execute UI → feedback → history → device install).
 
 **Demo**: User can open SOPify on phone, tap +, type "Out the door" with steps "elevator card / badge / earbuds", save, tap to execute, see current step highlighted, tick each, see "Last run 5 min ago • 1 run" on list row.
+
+---
+
+## Phase 1.5: One-shot SOPs (临时 SOP)
+
+**Goal**: Add lightweight ad-hoc SOPs for "tonight I want to plan tomorrow morning" / "I'll do this once in 30 minutes" use cases. Pinned at the top of home, prompted to delete on completion.
+
+**Why right after Phase 1**: high-frequency need, structurally tiny (one Bool flag + one sheet + one home section), and the natural escape valve once users start living in the checklist MVP. Inserting here means temp SOPs grow capabilities for free as later phases land — Phase 2B gives them flow execution, 2C gives nesting, etc., because `isOneShot` is orthogonal to type.
+
+**New scope**:
+- `SOP` model gains `isOneShot: Bool` (defaults to `false`); migrate existing rows safely
+- Home screen gets a top-pinned "临时" section listing all SOPs where `isOneShot == true`; section auto-hides when empty
+- `+ 临时 SOP` button rendered next to / below the temp section header (separate from the regular `+`); tap opens the edit view with `isOneShot=true` pre-set, type defaulted to `.checklist` (only structural type available in Phase 1.5), no category selector shown
+- Execution view: on the final step of a one-shot SOP, present a bottom sheet
+  > 做完啦。这条临时 SOP 还留着吗？
+  > `[删了]` (default focus) `[留着]`
+  - `[删了]` — cascade-delete SOP + its ExecutionRecord, dismiss to home
+  - `[留着]` — dismiss to home, SOP stays in temp section
+- Triggers UI suppressed for one-shot SOPs (when triggers ship in Phase 3B, the trigger config sheet must hide for `isOneShot=true`)
+- Capability inheritance: once Phase 2B/2C/3A land, one-shot SOPs automatically gain flow / nesting / branching support (no extra work — the flag is orthogonal)
+
+**Out of scope** (this phase): triggers (3B), JSON export of one-shot SOPs (4A — and even then, one-shot SOPs are excluded from export as design §4.6 states).
+
+**Estimated tasks**: ~5 (model field + migration test, home temp section, `+ 临时 SOP` entry, edit-view default-state plumbing, completion sheet + delete cascade).
+
+**Risks**: SwiftData migration when adding a new non-optional field — confirm default value migration works on the simulator before pushing.
 
 ---
 
