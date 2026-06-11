@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "name": "到家流程",
+  "type": "flow",
+  "category": "生活",
+  "description": "进门后顺序处理，不让家越住越乱",
+  "steps": [
+    { "kind": "text", "text": "把包 / 外卖 / 快递先放在玄关固定区" },
+    { "kind": "text", "text": "脱外套挂好，不堆沙发" },
+    { "kind": "text", "text": "洗手" },
+    { "kind": "text", "text": "换上家居服 / 睡衣" },
+    { "kind": "text", "text": "把今天产生的垃圾归到垃圾桶" },
+    { "kind": "text", "text": "桌面 1 分钟收拾——只动这一桌" },
+    { "kind": "text", "text": "看一眼明天日历，提前心里有数" }
+  ]
+}

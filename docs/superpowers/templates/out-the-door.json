@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "name": "出门三件套",
+  "type": "checklist",
+  "category": "出行",
+  "description": "出门前最容易漏的小物件",
+  "steps": [
+    { "kind": "text", "text": "电梯卡" },
+    { "kind": "text", "text": "工牌" },
+    { "kind": "text", "text": "耳机" },
+    { "kind": "text", "text": "钥匙" },
+    { "kind": "text", "text": "充电线 / 充电宝" }
+  ]
+}

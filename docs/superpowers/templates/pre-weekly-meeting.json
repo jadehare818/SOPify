@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "name": "周会前准备",
+  "type": "checklist",
+  "category": "工作",
+  "description": "每周固定会议前的 5 项自检",
+  "steps": [
+    { "kind": "text", "text": "上周 action items 进度同步好了吗" },
+    { "kind": "text", "text": "本周风险 / 阻塞点想清楚了吗" },
+    { "kind": "text", "text": "想跟团队对齐的 1 个核心问题是什么" },
+    { "kind": "text", "text": "需要别人帮忙的事写下来了吗" },
+    { "kind": "text", "text": "下周的优先级排好了吗" }
+  ]
+}

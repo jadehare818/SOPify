@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "name": "晨间例行",
+  "type": "flow",
+  "category": "生活",
+  "description": "起床后的 30 分钟有序展开一天",
+  "steps": [
+    { "kind": "text", "text": "起床后立即喝一杯温水" },
+    { "kind": "text", "text": "打开窗帘 / 拉开窗户透气 1 分钟" },
+    { "kind": "text", "text": "刷牙洗脸" },
+    { "kind": "text", "text": "称体重并记录（可选）" },
+    { "kind": "text", "text": "做 5 分钟拉伸 / 简单运动" },
+    { "kind": "text", "text": "吃早餐（不能省）" },
+    { "kind": "text", "text": "花 3 分钟想清楚今天最重要的 1 件事" },
+    { "kind": "text", "text": "整理仪容出门" }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "name": "健身后流程",
+  "type": "flow",
+  "category": "运动",
+  "description": "训练完到回家之间的回血流程",
+  "steps": [
+    { "kind": "text", "text": "训练结束后慢走 / 拉伸 5 分钟降心率" },
+    { "kind": "text", "text": "补充蛋白质（蛋白粉 / 鸡蛋 / 鸡胸肉）" },
+    { "kind": "text", "text": "喝至少 500ml 水补水" },
+    { "kind": "text", "text": "去淋浴间冲澡（用更衣区清单）" },
+    { "kind": "text", "text": "把湿衣物装防水袋" },
+    { "kind": "text", "text": "回家路上花 2 分钟反思今天训练有没有发力到位" },
+    { "kind": "text", "text": "到家泡脚 / 泡沫轴 10 分钟" }
+  ]
+}

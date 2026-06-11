@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "name": "游泳出发前打包",
+  "type": "checklist",
+  "category": "运动",
+  "description": "去泳馆前书包里要装的东西",
+  "steps": [
+    { "kind": "text", "text": "泳衣 / 泳裤" },
+    { "kind": "text", "text": "泳镜" },
+    { "kind": "text", "text": "泳帽" },
+    { "kind": "text", "text": "毛巾" },
+    { "kind": "text", "text": "拖鞋" },
+    { "kind": "text", "text": "洗发水 / 沐浴露" },
+    { "kind": "text", "text": "干净的换洗衣物" },
+    { "kind": "text", "text": "防水袋（装湿衣物）" }
+  ]
+}

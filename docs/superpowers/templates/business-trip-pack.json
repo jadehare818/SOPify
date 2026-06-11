@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "name": "出差打包",
+  "type": "checklist",
+  "category": "出行",
+  "description": "短途 1-3 天出差通用清单",
+  "steps": [
+    { "kind": "text", "text": "身份证 + 工牌" },
+    { "kind": "text", "text": "笔记本电脑 + 充电器" },
+    { "kind": "text", "text": "手机充电器 / 充电宝" },
+    { "kind": "text", "text": "耳机" },
+    { "kind": "text", "text": "换洗衣物（按天数 +1 套）" },
+    { "kind": "text", "text": "睡衣 / 拖鞋" },
+    { "kind": "text", "text": "洗漱用品（牙刷、牙膏、洗面奶）" },
+    { "kind": "text", "text": "护肤品 / 化妆品（瓶装分装好）" },
+    { "kind": "text", "text": "常备药" },
+    { "kind": "text", "text": "雨伞（看天气）" }
+  ]
+}
