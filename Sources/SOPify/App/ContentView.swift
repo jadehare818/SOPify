@@ -2,11 +2,12 @@ import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        Text("SOPify – list view coming next")
-            .padding()
+        SOPListView()
     }
 }
 
 #Preview {
     ContentView()
+        .modelContainer(for: [SOP.self, Step.self, ExecutionRecord.self, StepCompletion.self],
+                        inMemory: true)
 }
