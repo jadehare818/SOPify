@@ -1,0 +1,48 @@
+name: SOPify
+options:
+  bundleIdPrefix: com.jadehare818
+  deploymentTarget:
+    iOS: "17.0"
+    macOS: "14.0"
+  developmentLanguage: en
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_UILaunchScreen_Generation: YES
+    INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait"
+    INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGNING_ALLOWED: "NO"
+targets:
+  SOPify:
+    type: application
+    supportedDestinations: [iOS, macOS]
+    sources:
+      - path: Sources/SOPify
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jadehare818.SOPify
+        TARGETED_DEVICE_FAMILY: "1,2"
+        INFOPLIST_KEY_CFBundleDisplayName: "SOPify"
+  SOPifyTests:
+    type: bundle.unit-test
+    supportedDestinations: [iOS, macOS]
+    sources:
+      - path: Tests/SOPifyTests
+    dependencies:
+      - target: SOPify
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jadehare818.SOPifyTests
+schemes:
+  SOPify:
+    build:
+      targets:
+        SOPify: all
+        SOPifyTests: [test]
+    test:
+      targets: [SOPifyTests]
