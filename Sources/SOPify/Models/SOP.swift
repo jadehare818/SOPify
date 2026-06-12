@@ -12,6 +12,7 @@ final class SOP {
     var name: String
     var typeRaw: String
     var isOneShot: Bool
+    var parentStepId: UUID?
     var createdAt: Date
     var updatedAt: Date
 
@@ -24,6 +25,8 @@ final class SOP {
         get { SOPType(rawValue: typeRaw) ?? .checklist }
         set { typeRaw = newValue.rawValue }
     }
+
+    var isChild: Bool { parentStepId != nil }
 
     init(name: String, type: SOPType = .checklist, isOneShot: Bool = false) {
         self.id = UUID()

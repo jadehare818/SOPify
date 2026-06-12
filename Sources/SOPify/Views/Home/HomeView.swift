@@ -12,16 +12,16 @@ struct HomeView: View {
     @State private var searchText = ""
 
     private var tempSOPs: [SOP] {
-        allSOPs.filter { $0.isOneShot }
+        allSOPs.filter { $0.isOneShot && !$0.isChild }
     }
 
     private var uncategorizedSOPs: [SOP] {
-        allSOPs.filter { !$0.isOneShot && $0.category == nil }
+        allSOPs.filter { !$0.isOneShot && $0.category == nil && !$0.isChild }
     }
 
     private var filteredSOPs: [SOP] {
         guard !searchText.isEmpty else { return [] }
-        return allSOPs.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        return allSOPs.filter { $0.name.localizedCaseInsensitiveContains(searchText) && !$0.isChild }
     }
 
     private var recentFinished: [ExecutionRecord] {

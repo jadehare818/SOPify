@@ -12,6 +12,7 @@ struct FlowExecutionView: View {
     @State private var showingFeedback = false
     @State private var feedbackDraft = ""
     @State private var showingOneShotPrompt = false
+    @State private var activeChildSOP: SOP?
 
     private var orderedSteps: [Step] {
         sop.steps.sorted(by: { $0.order < $1.order })
@@ -33,22 +34,35 @@ struct FlowExecutionView: View {
                         let isCompleted = completedStepIDs.contains(step.id)
                         let isCurrent = step.id == currentStepID
 
-                        FlowStepRow(
-                            step: step,
-                            isCompleted: isCompleted,
-                            isCurrent: isCurrent
-                        ) {
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                complete(step)
-                            }
-                            // Scroll to next step
-                            if let nextID = currentStepID {
-                                withAnimation {
-                                    proxy.scrollTo(nextID, anchor: .center)
+                        if step.isNested {
+                            NestedFlowStepRow(
+                                step: step,
+                                isCompleted: isCompleted,
+                                isCurrent: isCurrent
+                            ) {
+                                if let childId = step.nestedSOPId {
+                                    activeChildSOP = fetchChild(id: childId)
                                 }
                             }
+                            .id(step.id)
+                        } else {
+                            FlowStepRow(
+                                step: step,
+                                isCompleted: isCompleted,
+                                isCurrent: isCurrent
+                            ) {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    complete(step)
+                                }
+                                // Scroll to next step
+                                if let nextID = currentStepID {
+                                    withAnimation {
+                                        proxy.scrollTo(nextID, anchor: .center)
+                                    }
+                                }
+                            }
+                            .id(step.id)
                         }
-                        .id(step.id)
                     }
 
                     if isAllDone {
@@ -93,6 +107,18 @@ struct FlowExecutionView: View {
             if let id = currentStepID, let step = orderedSteps.first(where: { $0.id == id }) {
                 FeedbackSheet(stepText: step.text, draft: $feedbackDraft) { text in
                     saveFeedback(text, forStepID: id)
+                }
+            }
+        }
+        .sheet(item: $activeChildSOP) { child in
+            NavigationStack {
+                NestedSOPExecutionWrapper(sop: child) {
+                    activeChildSOP = nil
+                    // Auto-complete the parent step when child finishes
+                    if let step = orderedSteps.first(where: { $0.nestedSOPId == child.id }),
+                       !completedStepIDs.contains(step.id) {
+                        complete(step)
+                    }
                 }
             }
         }
@@ -150,6 +176,87 @@ struct FlowExecutionView: View {
         context.delete(sop)
         try? context.save()
         dismiss()
+    }
+
+    private func fetchChild(id: UUID) -> SOP? {
+        let descriptor = FetchDescriptor<SOP>(predicate: #Predicate { $0.id == id })
+        return try? context.fetch(descriptor).first
+    }
+}
+
+// MARK: - Nested flow step row (shows drill-in button instead of "Done")
+
+struct NestedFlowStepRow: View {
+    let step: Step
+    let isCompleted: Bool
+    let isCurrent: Bool
+    let onDrillIn: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 12) {
+                // Step indicator
+                ZStack {
+                    if isCompleted {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .font(.system(size: isCurrent ? 28 : 20))
+                    } else if isCurrent {
+                        Circle()
+                            .fill(Color.orange)
+                            .frame(width: 28, height: 28)
+                            .overlay(
+                                Image(systemName: "folder.fill")
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.white)
+                            )
+                    } else {
+                        Circle()
+                            .strokeBorder(Color.orange.opacity(0.6), lineWidth: 1.5)
+                            .frame(width: 20, height: 20)
+                            .overlay(
+                                Image(systemName: "folder")
+                                    .font(.system(size: 8))
+                                    .foregroundStyle(.orange)
+                            )
+                    }
+                }
+                .frame(width: 32)
+
+                // Step content
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(step.text)
+                            .font(isCurrent ? .title3.weight(.semibold) : .body)
+                            .foregroundStyle(isCompleted ? .secondary : .primary)
+                            .strikethrough(isCompleted)
+                        Image(systemName: "arrow.right.circle")
+                            .foregroundStyle(.orange)
+                            .font(.caption)
+                    }
+
+                    if isCurrent {
+                        Button(action: onDrillIn) {
+                            Label("Start sub-SOP", systemImage: "arrow.right.circle.fill")
+                                .font(.subheadline.weight(.medium))
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.orange)
+                        .padding(.top, 4)
+                    }
+                }
+
+                Spacer()
+            }
+            .padding(.vertical, isCurrent ? 16 : 8)
+            .padding(.horizontal, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isCurrent ? Color.orange.opacity(0.08) : Color.clear)
+            )
+        }
+        .animation(.easeInOut(duration: 0.25), value: isCurrent)
+        .animation(.easeInOut(duration: 0.25), value: isCompleted)
     }
 }
 

@@ -10,9 +10,9 @@ struct CategoryDetailView: View {
 
     private var sopsInCategory: [SOP] {
         if let category {
-            return allSOPs.filter { $0.category?.id == category.id && !$0.isOneShot }
+            return allSOPs.filter { $0.category?.id == category.id && !$0.isOneShot && !$0.isChild }
         } else {
-            return allSOPs.filter { $0.category == nil && !$0.isOneShot }
+            return allSOPs.filter { $0.category == nil && !$0.isOneShot && !$0.isChild }
         }
     }
 

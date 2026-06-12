@@ -12,6 +12,7 @@ struct SOPExecutionView: View {
     @State private var showingFeedback = false
     @State private var feedbackDraft = ""
     @State private var showingOneShotPrompt = false
+    @State private var activeChildSOP: SOP?
 
     private var orderedSteps: [Step] {
         sop.steps.sorted(by: { $0.order < $1.order })
@@ -29,12 +30,26 @@ struct SOPExecutionView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(orderedSteps) { step in
-                    StepCheckRow(
-                        step: step,
-                        isCompleted: completedStepIDs.contains(step.id),
-                        isCurrent: step.id == currentStepID
-                    ) {
-                        toggle(step)
+                    if step.isNested {
+                        NestedStepCheckRow(
+                            step: step,
+                            isCompleted: completedStepIDs.contains(step.id),
+                            isCurrent: step.id == currentStepID
+                        ) {
+                            if let childId = step.nestedSOPId {
+                                activeChildSOP = fetchChild(id: childId)
+                            }
+                        } onToggle: {
+                            toggle(step)
+                        }
+                    } else {
+                        StepCheckRow(
+                            step: step,
+                            isCompleted: completedStepIDs.contains(step.id),
+                            isCurrent: step.id == currentStepID
+                        ) {
+                            toggle(step)
+                        }
                     }
                 }
                 if isAllDone {
@@ -78,6 +93,18 @@ struct SOPExecutionView: View {
             if let id = currentStepID, let step = orderedSteps.first(where: { $0.id == id }) {
                 FeedbackSheet(stepText: step.text, draft: $feedbackDraft) { text in
                     saveFeedback(text, forStepID: id)
+                }
+            }
+        }
+        .sheet(item: $activeChildSOP) { child in
+            NavigationStack {
+                NestedSOPExecutionWrapper(sop: child) {
+                    activeChildSOP = nil
+                    // Auto-complete the parent step that launched this child
+                    if let step = orderedSteps.first(where: { $0.nestedSOPId == child.id }),
+                       !completedStepIDs.contains(step.id) {
+                        toggle(step)
+                    }
                 }
             }
         }
@@ -145,6 +172,283 @@ struct SOPExecutionView: View {
         context.delete(sop)
         try? context.save()
         dismiss()
+    }
+
+    private func fetchChild(id: UUID) -> SOP? {
+        let descriptor = FetchDescriptor<SOP>(predicate: #Predicate { $0.id == id })
+        return try? context.fetch(descriptor).first
+    }
+}
+
+// MARK: - Nested step row for checklist mode
+
+struct NestedStepCheckRow: View {
+    let step: Step
+    let isCompleted: Bool
+    let isCurrent: Bool
+    let onDrillIn: () -> Void
+    let onToggle: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            Button(action: onToggle) {
+                Image(systemName: isCompleted ? "checkmark.circle.fill" : "circle")
+                    .font(isCurrent ? .system(size: 32) : .system(size: 24))
+                    .foregroundStyle(isCompleted ? .green : (isCurrent ? .accentColor : .secondary))
+            }
+            .buttonStyle(.plain)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "folder.fill")
+                        .foregroundStyle(.orange)
+                        .font(.caption)
+                    Text(step.text)
+                        .font(isCurrent ? .title3.weight(.semibold) : .body)
+                        .foregroundStyle(isCompleted ? .secondary : .primary)
+                        .strikethrough(isCompleted)
+                }
+
+                if isCurrent && !isCompleted {
+                    Button(action: onDrillIn) {
+                        Label("Open sub-SOP", systemImage: "arrow.right.circle.fill")
+                            .font(.subheadline.weight(.medium))
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.orange)
+                    .padding(.top, 2)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.vertical, isCurrent ? 12 : 6)
+        .padding(.horizontal, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(isCurrent ? Color.orange.opacity(0.08) : Color.clear)
+        )
+        .animation(.easeInOut(duration: 0.2), value: isCurrent)
+        .animation(.easeInOut(duration: 0.2), value: isCompleted)
+    }
+}
+
+// MARK: - Wrapper for executing a nested SOP in a sheet
+
+struct NestedSOPExecutionWrapper: View {
+    @Environment(\.dismiss) private var dismiss
+    let sop: SOP
+    let onComplete: () -> Void
+
+    var body: some View {
+        Group {
+            switch sop.type {
+            case .checklist:
+                NestedChecklistExecution(sop: sop, onComplete: onComplete)
+            case .flow:
+                NestedFlowExecution(sop: sop, onComplete: onComplete)
+            }
+        }
+        .navigationTitle(sop.name)
+        #if !os(macOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Back") { dismiss() }
+            }
+        }
+    }
+}
+
+// MARK: - Nested checklist execution (simplified, no history tracking)
+
+struct NestedChecklistExecution: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+
+    let sop: SOP
+    let onComplete: () -> Void
+
+    @State private var completedStepIDs: Set<UUID> = []
+    @State private var activeChildSOP: SOP?
+
+    private var orderedSteps: [Step] {
+        sop.steps.sorted(by: { $0.order < $1.order })
+    }
+
+    private var currentStepID: UUID? {
+        orderedSteps.first(where: { !completedStepIDs.contains($0.id) })?.id
+    }
+
+    private var isAllDone: Bool {
+        !orderedSteps.isEmpty && completedStepIDs.count == orderedSteps.count
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(orderedSteps) { step in
+                    if step.isNested {
+                        NestedStepCheckRow(
+                            step: step,
+                            isCompleted: completedStepIDs.contains(step.id),
+                            isCurrent: step.id == currentStepID
+                        ) {
+                            if let childId = step.nestedSOPId {
+                                activeChildSOP = fetchChild(id: childId)
+                            }
+                        } onToggle: {
+                            toggleStep(step)
+                        }
+                    } else {
+                        StepCheckRow(
+                            step: step,
+                            isCompleted: completedStepIDs.contains(step.id),
+                            isCurrent: step.id == currentStepID
+                        ) {
+                            toggleStep(step)
+                        }
+                    }
+                }
+                if isAllDone {
+                    Button {
+                        onComplete()
+                        dismiss()
+                    } label: {
+                        Label("Done — return to parent", systemImage: "arrow.uturn.backward.circle.fill")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                    .padding(.top, 16)
+                }
+            }
+            .padding()
+        }
+        .sheet(item: $activeChildSOP) { child in
+            NavigationStack {
+                NestedSOPExecutionWrapper(sop: child) {
+                    activeChildSOP = nil
+                    if let step = orderedSteps.first(where: { $0.nestedSOPId == child.id }),
+                       !completedStepIDs.contains(step.id) {
+                        toggleStep(step)
+                    }
+                }
+            }
+        }
+    }
+
+    private func toggleStep(_ step: Step) {
+        if completedStepIDs.contains(step.id) {
+            completedStepIDs.remove(step.id)
+        } else {
+            completedStepIDs.insert(step.id)
+        }
+    }
+
+    private func fetchChild(id: UUID) -> SOP? {
+        let descriptor = FetchDescriptor<SOP>(predicate: #Predicate { $0.id == id })
+        return try? context.fetch(descriptor).first
+    }
+}
+
+// MARK: - Nested flow execution (simplified, no history tracking)
+
+struct NestedFlowExecution: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+
+    let sop: SOP
+    let onComplete: () -> Void
+
+    @State private var completedStepIDs: Set<UUID> = []
+    @State private var activeChildSOP: SOP?
+
+    private var orderedSteps: [Step] {
+        sop.steps.sorted(by: { $0.order < $1.order })
+    }
+
+    private var currentStepID: UUID? {
+        orderedSteps.first(where: { !completedStepIDs.contains($0.id) })?.id
+    }
+
+    private var isAllDone: Bool {
+        !orderedSteps.isEmpty && completedStepIDs.count == orderedSteps.count
+    }
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(orderedSteps) { step in
+                        let isCompleted = completedStepIDs.contains(step.id)
+                        let isCurrent = step.id == currentStepID
+
+                        if step.isNested {
+                            NestedFlowStepRow(
+                                step: step,
+                                isCompleted: isCompleted,
+                                isCurrent: isCurrent
+                            ) {
+                                if let childId = step.nestedSOPId {
+                                    activeChildSOP = fetchChild(id: childId)
+                                }
+                            }
+                            .id(step.id)
+                        } else {
+                            FlowStepRow(
+                                step: step,
+                                isCompleted: isCompleted,
+                                isCurrent: isCurrent
+                            ) {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    completedStepIDs.insert(step.id)
+                                }
+                                if let nextID = orderedSteps.first(where: { !completedStepIDs.contains($0.id) && $0.id != step.id })?.id {
+                                    withAnimation {
+                                        proxy.scrollTo(nextID, anchor: .center)
+                                    }
+                                }
+                            }
+                            .id(step.id)
+                        }
+                    }
+
+                    if isAllDone {
+                        Button {
+                            onComplete()
+                            dismiss()
+                        } label: {
+                            Label("Done — return to parent", systemImage: "arrow.uturn.backward.circle.fill")
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.orange)
+                        .padding(.top, 16)
+                    }
+                }
+                .padding()
+            }
+        }
+        .sheet(item: $activeChildSOP) { child in
+            NavigationStack {
+                NestedSOPExecutionWrapper(sop: child) {
+                    activeChildSOP = nil
+                    if let step = orderedSteps.first(where: { $0.nestedSOPId == child.id }),
+                       !completedStepIDs.contains(step.id) {
+                        completedStepIDs.insert(step.id)
+                    }
+                }
+            }
+        }
+    }
+
+    private func fetchChild(id: UUID) -> SOP? {
+        let descriptor = FetchDescriptor<SOP>(predicate: #Predicate { $0.id == id })
+        return try? context.fetch(descriptor).first
     }
 }
 

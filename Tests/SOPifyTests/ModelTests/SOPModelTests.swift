@@ -107,4 +107,84 @@ final class SOPModelTests: XCTestCase {
         let fetched = try context.fetch(FetchDescriptor<SOP>())
         XCTAssertEqual(fetched.first?.type, .flow)
     }
+
+    // MARK: - Nested sub-SOP tests
+
+    func testStepNestedSOPIdDefaultsToNil() {
+        let step = Step(text: "Plain step", order: 0)
+        XCTAssertNil(step.nestedSOPId)
+        XCTAssertFalse(step.isNested)
+    }
+
+    func testStepCanBeCreatedWithNestedSOPId() throws {
+        let container = try InMemoryContainer.make()
+        let context = ModelContext(container)
+
+        let childId = UUID()
+        let step = Step(text: "Sub-SOP step", order: 0, nestedSOPId: childId)
+        context.insert(step)
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<Step>())
+        XCTAssertEqual(fetched.first?.nestedSOPId, childId)
+        XCTAssertTrue(fetched.first?.isNested ?? false)
+    }
+
+    func testSOPParentStepIdDefaultsToNil() {
+        let sop = SOP(name: "Regular SOP")
+        XCTAssertNil(sop.parentStepId)
+        XCTAssertFalse(sop.isChild)
+    }
+
+    func testSOPCanBeMarkedAsChild() throws {
+        let container = try InMemoryContainer.make()
+        let context = ModelContext(container)
+
+        let parentStepId = UUID()
+        let childSOP = SOP(name: "Child SOP")
+        childSOP.parentStepId = parentStepId
+        context.insert(childSOP)
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<SOP>())
+        XCTAssertEqual(fetched.first?.parentStepId, parentStepId)
+        XCTAssertTrue(fetched.first?.isChild ?? false)
+    }
+
+    func testNestedSOPLinkage() throws {
+        let container = try InMemoryContainer.make()
+        let context = ModelContext(container)
+
+        // Create parent SOP
+        let parent = SOP(name: "Swimming", type: .flow)
+
+        // Create child SOP
+        let child = SOP(name: "Locker room prep", type: .checklist)
+
+        // Create a step linking to the child
+        let nestedStep = Step(text: "Locker room prep", order: 0, nestedSOPId: child.id)
+        child.parentStepId = nestedStep.id
+
+        parent.steps = [nestedStep]
+        child.steps = [
+            Step(text: "Change clothes", order: 0),
+            Step(text: "Store bag in locker", order: 1),
+        ]
+
+        context.insert(parent)
+        context.insert(child)
+        try context.save()
+
+        // Verify parent has nested step
+        let fetchedParent = try context.fetch(FetchDescriptor<SOP>(predicate: #Predicate { $0.name == "Swimming" }))
+        XCTAssertEqual(fetchedParent.first?.steps.count, 1)
+        XCTAssertTrue(fetchedParent.first?.steps.first?.isNested ?? false)
+
+        // Verify child is linked
+        let childId = fetchedParent.first!.steps.first!.nestedSOPId!
+        let fetchedChild = try context.fetch(FetchDescriptor<SOP>(predicate: #Predicate { $0.id == childId }))
+        XCTAssertEqual(fetchedChild.first?.name, "Locker room prep")
+        XCTAssertEqual(fetchedChild.first?.steps.count, 2)
+        XCTAssertTrue(fetchedChild.first?.isChild ?? false)
+    }
 }
