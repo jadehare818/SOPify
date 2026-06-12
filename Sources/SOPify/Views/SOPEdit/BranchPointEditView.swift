@@ -79,7 +79,6 @@ struct BranchPointEditView: View {
             step.text = trimmed
         }
         step.rejoinAfter = rejoinAfter
-        try? context.save()
         dismiss()
     }
 
@@ -92,7 +91,6 @@ struct BranchPointEditView: View {
             }
             context.delete(option)
         }
-        try? context.save()
     }
 
     private func fetchChild(id: UUID) -> SOP? {
@@ -340,7 +338,6 @@ struct AddBranchOptionSheet: View {
         )
         option.step = step
         context.insert(option)
-        try? context.save()
         dismiss()
     }
 
@@ -360,7 +357,6 @@ struct AddBranchOptionSheet: View {
         )
         option.step = step
         context.insert(option)
-        try? context.save()
         dismiss()
     }
 
@@ -380,7 +376,6 @@ struct AddBranchOptionSheet: View {
         )
         option.step = step
         context.insert(option)
-        try? context.save()
         dismiss()
     }
 

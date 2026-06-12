@@ -217,10 +217,7 @@ struct SOPEditView: View {
     }
 
     private func cancelAction() {
-        if let created = activeSOP {
-            context.delete(created)
-            try? context.save()
-        }
+        context.rollback()
         dismiss()
     }
 
@@ -233,7 +230,6 @@ struct SOPEditView: View {
         let sop = SOP(name: trimmedName.isEmpty ? "Untitled" : trimmedName, type: selectedType, isOneShot: isOneShot)
         sop.category = selectedCategory
         context.insert(sop)
-        try? context.save()
         activeSOP = sop
         return sop
     }
@@ -246,7 +242,6 @@ struct SOPEditView: View {
         let step = Step(text: "", order: order)
         parent.steps.append(step)
         parent.updatedAt = .now
-        try? context.save()
     }
 
     private func addSubSOP() {
@@ -263,7 +258,6 @@ struct SOPEditView: View {
         let step = Step(text: trimmed, order: stepOrder, branchQuestion: trimmed)
         parent.steps.append(step)
         parent.updatedAt = .now
-        try? context.save()
 
         editingBranchStep = step
     }
@@ -288,7 +282,6 @@ struct SOPEditView: View {
             context.delete(step)
         }
         reorderSteps(parent)
-        try? context.save()
     }
 
     private func moveSteps(from source: IndexSet, to destination: Int) {
@@ -299,7 +292,6 @@ struct SOPEditView: View {
             step.order = i
         }
         parent.updatedAt = .now
-        try? context.save()
     }
 
     private func reorderSteps(_ parent: SOP) {
@@ -318,7 +310,6 @@ struct SOPEditView: View {
 // MARK: - Unified step row in edit mode
 
 private struct EditStepRow: View {
-    @Environment(\.modelContext) private var context
     let step: Step
     let onEditNested: () -> Void
     let onEditBranch: () -> Void
@@ -360,7 +351,6 @@ private struct EditStepRow: View {
             TextField("Step", text: $text)
                 .onChange(of: text) { _, newValue in
                     step.text = newValue
-                    try? context.save()
                 }
         }
     }
@@ -471,7 +461,6 @@ struct SubSOPPickerSheet: View {
         context.insert(childSOP)
         parent.steps.append(step)
         parent.updatedAt = .now
-        try? context.save()
 
         dismiss()
         onCreated(childSOP)
@@ -488,7 +477,6 @@ struct SubSOPPickerSheet: View {
         let step = Step(text: sop.name, order: stepOrder, nestedSOPId: sop.id)
         parent.steps.append(step)
         parent.updatedAt = .now
-        try? context.save()
         dismiss()
     }
 
