@@ -94,13 +94,6 @@ struct BranchExecutionView: View {
         .onAppear { ensureRecord() }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                NavigationLink {
-                    SOPHistoryView(sop: sop)
-                } label: {
-                    Image(systemName: "clock")
-                }
-            }
-            ToolbarItem(placement: .primaryAction) {
                 Button {
                     feedbackDraft = ""
                     showingFeedback = true
