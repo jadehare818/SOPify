@@ -137,6 +137,13 @@ struct HomeView: View {
                         Image(systemName: "slider.horizontal.3")
                     }
                 }
+                ToolbarItem(placement: .navigation) {
+                    NavigationLink {
+                        DiaryView()
+                    } label: {
+                        Image(systemName: "book")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button { showingNewSheet = true } label: {
