@@ -14,8 +14,7 @@ struct SOPEditView: View {
     @State private var selectedCategory: Category?
     @State private var selectedType: SOPType = .checklist
     @State private var nestedEditTarget: SOP?
-    @State private var showingSubSOPNameAlert = false
-    @State private var subSOPNameDraft = ""
+    @State private var showingSubSOPSheet = false
     @State private var showingBranchAlert = false
     @State private var branchQuestionDraft = ""
     @State private var editingBranchStep: Step?
@@ -126,8 +125,7 @@ struct SOPEditView: View {
                             deleteNestedSteps(nestedSteps: nestedSteps, at: indexSet)
                         }
                         Button {
-                            subSOPNameDraft = ""
-                            showingSubSOPNameAlert = true
+                            showingSubSOPSheet = true
                         } label: {
                             Label("Add Sub-SOP", systemImage: "folder.badge.plus")
                         }
@@ -204,14 +202,12 @@ struct SOPEditView: View {
             .sheet(item: $nestedEditTarget) { childSOP in
                 SOPEditView(editing: childSOP)
             }
-            .alert("New Sub-SOP", isPresented: $showingSubSOPNameAlert) {
-                TextField("Sub-SOP name", text: $subSOPNameDraft)
-                Button("Create") {
-                    addNestedSOP(name: subSOPNameDraft)
+            .sheet(isPresented: $showingSubSOPSheet) {
+                if let parent = editing {
+                    SubSOPPickerSheet(parent: parent) { childSOP in
+                        nestedEditTarget = childSOP
+                    }
                 }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Enter a name for the sub-SOP.")
             }
             .alert("New Branch Point", isPresented: $showingBranchAlert) {
                 TextField("Question (e.g. Which route?)", text: $branchQuestionDraft)
@@ -293,14 +289,9 @@ struct SOPEditView: View {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
 
-        // Create child SOP
         let childSOP = SOP(name: trimmed, type: .checklist)
-
-        // Create a step pointing to the child
         let stepOrder = parent.steps.count
         let step = Step(text: trimmed, order: stepOrder, nestedSOPId: childSOP.id)
-
-        // Link child back to the step
         childSOP.parentStepId = step.id
 
         context.insert(childSOP)
@@ -308,8 +299,16 @@ struct SOPEditView: View {
         parent.updatedAt = .now
         try? context.save()
 
-        // Open the child for editing
         nestedEditTarget = childSOP
+    }
+
+    private func linkExistingSOP(_ existingSOP: SOP) {
+        guard let parent = editing else { return }
+        let stepOrder = parent.steps.count
+        let step = Step(text: existingSOP.name, order: stepOrder, nestedSOPId: existingSOP.id)
+        parent.steps.append(step)
+        parent.updatedAt = .now
+        try? context.save()
     }
 
     private func deleteNestedSteps(nestedSteps: [Step], at indexSet: IndexSet) {
@@ -359,6 +358,190 @@ struct SOPEditView: View {
             context.delete(step)
         }
         try? context.save()
+    }
+}
+
+// MARK: - Sub-SOP Picker (create new or link existing)
+
+struct SubSOPPickerSheet: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    @Query(sort: \SOP.name) private var allSOPs: [SOP]
+
+    let parent: SOP
+    let onCreated: (SOP) -> Void
+
+    @State private var mode: PickerMode = .choose
+    @State private var newName = ""
+    @State private var searchText = ""
+    @State private var showingCycleAlert = false
+    @State private var cycleAlertSOPName = ""
+
+    enum PickerMode {
+        case choose, createNew, linkExisting
+    }
+
+    private var linkableSOPs: [SOP] {
+        let alreadyLinkedIds = Set(parent.steps.compactMap(\.nestedSOPId))
+        return allSOPs.filter { sop in
+            sop.id != parent.id &&
+            !alreadyLinkedIds.contains(sop.id) &&
+            !sop.isOneShot &&
+            (searchText.isEmpty || sop.name.localizedCaseInsensitiveContains(searchText))
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                switch mode {
+                case .choose:
+                    List {
+                        Button {
+                            mode = .createNew
+                        } label: {
+                            Label("Create New", systemImage: "plus.circle")
+                        }
+                        Button {
+                            mode = .linkExisting
+                        } label: {
+                            Label("Link Existing SOP", systemImage: "link")
+                        }
+                    }
+                case .createNew:
+                    Form {
+                        Section("Name") {
+                            TextField("Sub-SOP name", text: $newName)
+                        }
+                    }
+                case .linkExisting:
+                    List(linkableSOPs) { sop in
+                        LinkableSOPRow(sop: sop) {
+                            linkSOP(sop)
+                        }
+                    }
+                    .overlay {
+                        if linkableSOPs.isEmpty {
+                            ContentUnavailableView("No SOPs Available",
+                                                   systemImage: "tray",
+                                                   description: Text("All SOPs are already linked or none exist."))
+                        }
+                    }
+                    .searchable(text: $searchText, prompt: "Search SOPs")
+                }
+            }
+            .navigationTitle(mode == .choose ? "Add Sub-SOP" : (mode == .createNew ? "New Sub-SOP" : "Link Existing"))
+            #if !os(macOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                if mode == .createNew {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Create") {
+                            createNew()
+                        }
+                        .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+                if mode != .choose {
+                    ToolbarItem(placement: .navigation) {
+                        Button {
+                            mode = .choose
+                        } label: {
+                            Image(systemName: "chevron.left")
+                        }
+                    }
+                }
+            }
+            .alert("Circular Dependency", isPresented: $showingCycleAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("\"\(cycleAlertSOPName)\" already contains this SOP (directly or indirectly). Linking it would create a cycle.")
+            }
+        }
+    }
+
+    private func createNew() {
+        let trimmed = newName.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+
+        let childSOP = SOP(name: trimmed, type: .checklist)
+        let stepOrder = parent.steps.count
+        let step = Step(text: trimmed, order: stepOrder, nestedSOPId: childSOP.id)
+        childSOP.parentStepId = step.id
+
+        context.insert(childSOP)
+        parent.steps.append(step)
+        parent.updatedAt = .now
+        try? context.save()
+
+        dismiss()
+        onCreated(childSOP)
+    }
+
+    private func linkSOP(_ sop: SOP) {
+        if wouldCreateCycle(linking: sop, to: parent) {
+            cycleAlertSOPName = sop.name
+            showingCycleAlert = true
+            return
+        }
+
+        let stepOrder = parent.steps.count
+        let step = Step(text: sop.name, order: stepOrder, nestedSOPId: sop.id)
+        parent.steps.append(step)
+        parent.updatedAt = .now
+        try? context.save()
+        dismiss()
+    }
+
+    private func wouldCreateCycle(linking candidate: SOP, to parent: SOP) -> Bool {
+        var visited = Set<UUID>()
+        return hasPath(from: candidate, to: parent.id, visited: &visited)
+    }
+
+    private func hasPath(from sop: SOP, to targetId: UUID, visited: inout Set<UUID>) -> Bool {
+        if sop.id == targetId { return true }
+        if visited.contains(sop.id) { return false }
+        visited.insert(sop.id)
+
+        let nestedIds = sop.steps.compactMap(\.nestedSOPId)
+        let branchTargetIds = sop.steps.flatMap { $0.branchOptions.map(\.targetSOPId) }
+        let allChildIds = nestedIds + branchTargetIds
+
+        for childId in allChildIds {
+            if childId == targetId { return true }
+            let descriptor = FetchDescriptor<SOP>(predicate: #Predicate { $0.id == childId })
+            if let child = try? context.fetch(descriptor).first {
+                if hasPath(from: child, to: targetId, visited: &visited) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+}
+
+private struct LinkableSOPRow: View {
+    let sop: SOP
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack {
+                VStack(alignment: .leading) {
+                    Text(sop.name).foregroundStyle(.primary)
+                    Text("\(sop.steps.count) steps · \(sop.type.rawValue)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "plus.circle")
+                    .foregroundStyle(Color.accentColor)
+            }
+        }
     }
 }
 
