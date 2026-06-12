@@ -24,6 +24,10 @@ struct SOPRowView: View {
                     Image(systemName: "arrow.forward.circle.fill")
                         .font(.caption)
                         .foregroundStyle(.blue)
+                } else if sop.type == .branching {
+                    Image(systemName: "arrow.triangle.branch")
+                        .font(.caption)
+                        .foregroundStyle(.purple)
                 }
             }
             HStack {

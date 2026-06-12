@@ -5,7 +5,7 @@ import SwiftData
 struct SOPifyApp: App {
     let container: ModelContainer = {
         do {
-            let schema = Schema([SOP.self, Step.self, ExecutionRecord.self, StepCompletion.self, Category.self])
+            let schema = Schema([SOP.self, Step.self, ExecutionRecord.self, StepCompletion.self, Category.self, BranchOption.self])
             let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
             return try ModelContainer(for: schema, configurations: [config])
         } catch {

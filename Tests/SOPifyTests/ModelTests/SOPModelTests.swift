@@ -187,4 +187,121 @@ final class SOPModelTests: XCTestCase {
         XCTAssertEqual(fetchedChild.first?.steps.count, 2)
         XCTAssertTrue(fetchedChild.first?.isChild ?? false)
     }
+
+    // MARK: - Branching SOP tests
+
+    func testSOPCanBeCreatedAsBranching() throws {
+        let container = try InMemoryContainer.make()
+        let context = ModelContext(container)
+
+        let sop = SOP(name: "Route decision", type: .branching)
+        context.insert(sop)
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<SOP>())
+        XCTAssertEqual(fetched.first?.type, .branching)
+    }
+
+    func testStepBranchFieldsDefaultToNil() {
+        let step = Step(text: "Normal step", order: 0)
+        XCTAssertNil(step.branchQuestion)
+        XCTAssertFalse(step.isBranch)
+        XCTAssertTrue(step.rejoinAfter)
+    }
+
+    func testStepCanBeCreatedAsBranchPoint() throws {
+        let container = try InMemoryContainer.make()
+        let context = ModelContext(container)
+
+        let step = Step(text: "Which way?", order: 0, branchQuestion: "Which way do you go?")
+        context.insert(step)
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<Step>())
+        XCTAssertEqual(fetched.first?.branchQuestion, "Which way do you go?")
+        XCTAssertTrue(fetched.first?.isBranch ?? false)
+    }
+
+    func testBranchOptionCreation() throws {
+        let container = try InMemoryContainer.make()
+        let context = ModelContext(container)
+
+        let childSOPId = UUID()
+        let option = BranchOption(label: "Take the bus", order: 0, targetSOPId: childSOPId)
+        context.insert(option)
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<BranchOption>())
+        XCTAssertEqual(fetched.count, 1)
+        XCTAssertEqual(fetched.first?.label, "Take the bus")
+        XCTAssertEqual(fetched.first?.targetSOPId, childSOPId)
+    }
+
+    func testBranchPointWithOptions() throws {
+        let container = try InMemoryContainer.make()
+        let context = ModelContext(container)
+
+        let sop = SOP(name: "Commute", type: .branching)
+
+        // Create branch step
+        let branchStep = Step(text: "How to get there?", order: 0, branchQuestion: "How to get there?")
+
+        // Create child SOPs for each option
+        let busSOP = SOP(name: "Bus route", type: .checklist)
+        busSOP.parentStepId = branchStep.id
+        busSOP.steps = [Step(text: "Walk to stop", order: 0), Step(text: "Board bus", order: 1)]
+
+        let bikeSOP = SOP(name: "Bike route", type: .checklist)
+        bikeSOP.parentStepId = branchStep.id
+        bikeSOP.steps = [Step(text: "Unlock bike", order: 0), Step(text: "Ride", order: 1)]
+
+        // Create options linking to child SOPs
+        let opt1 = BranchOption(label: "Bus", order: 0, targetSOPId: busSOP.id)
+        opt1.step = branchStep
+        let opt2 = BranchOption(label: "Bike", order: 1, targetSOPId: bikeSOP.id)
+        opt2.step = branchStep
+
+        sop.steps = [branchStep, Step(text: "Arrive at work", order: 1)]
+
+        context.insert(sop)
+        context.insert(busSOP)
+        context.insert(bikeSOP)
+        context.insert(opt1)
+        context.insert(opt2)
+        try context.save()
+
+        // Verify structure
+        let fetchedSOP = try context.fetch(FetchDescriptor<SOP>(predicate: #Predicate { $0.name == "Commute" }))
+        XCTAssertEqual(fetchedSOP.first?.steps.count, 2)
+
+        let fetchedBranch = fetchedSOP.first?.steps.first(where: { $0.isBranch })
+        XCTAssertNotNil(fetchedBranch)
+        XCTAssertEqual(fetchedBranch?.branchOptions.count, 2)
+
+        let sortedOptions = fetchedBranch!.branchOptions.sorted(by: { $0.order < $1.order })
+        XCTAssertEqual(sortedOptions[0].label, "Bus")
+        XCTAssertEqual(sortedOptions[1].label, "Bike")
+
+        // Verify child SOPs
+        let busChild = try context.fetch(FetchDescriptor<SOP>(predicate: #Predicate { $0.name == "Bus route" }))
+        XCTAssertTrue(busChild.first?.isChild ?? false)
+        XCTAssertEqual(busChild.first?.steps.count, 2)
+    }
+
+    func testRejoinAfterDefaultsToTrue() {
+        let step = Step(text: "Branch", order: 0, branchQuestion: "Q?")
+        XCTAssertTrue(step.rejoinAfter)
+    }
+
+    func testRejoinAfterCanBeDisabled() throws {
+        let container = try InMemoryContainer.make()
+        let context = ModelContext(container)
+
+        let step = Step(text: "Branch", order: 0, branchQuestion: "Q?", rejoinAfter: false)
+        context.insert(step)
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<Step>())
+        XCTAssertFalse(fetched.first?.rejoinAfter ?? true)
+    }
 }

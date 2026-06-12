@@ -7,14 +7,22 @@ final class Step {
     var text: String
     var order: Int
     var nestedSOPId: UUID?
+    var branchQuestion: String?
+    var rejoinAfter: Bool
     var sop: SOP?
 
-    var isNested: Bool { nestedSOPId != nil }
+    @Relationship(deleteRule: .cascade, inverse: \BranchOption.step)
+    var branchOptions: [BranchOption] = []
 
-    init(text: String, order: Int, nestedSOPId: UUID? = nil) {
+    var isNested: Bool { nestedSOPId != nil }
+    var isBranch: Bool { branchQuestion != nil }
+
+    init(text: String, order: Int, nestedSOPId: UUID? = nil, branchQuestion: String? = nil, rejoinAfter: Bool = true) {
         self.id = UUID()
         self.text = text
         self.order = order
         self.nestedSOPId = nestedSOPId
+        self.branchQuestion = branchQuestion
+        self.rejoinAfter = rejoinAfter
     }
 }

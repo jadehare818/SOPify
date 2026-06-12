@@ -55,6 +55,8 @@ struct CategoryDetailView: View {
                 SOPExecutionView(sop: sop)
             case .flow:
                 FlowExecutionView(sop: sop)
+            case .branching:
+                BranchExecutionView(sop: sop)
             }
         }
     }

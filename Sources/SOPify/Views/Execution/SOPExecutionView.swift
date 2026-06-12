@@ -247,6 +247,8 @@ struct NestedSOPExecutionWrapper: View {
                 NestedChecklistExecution(sop: sop, onComplete: onComplete)
             case .flow:
                 NestedFlowExecution(sop: sop, onComplete: onComplete)
+            case .branching:
+                NestedBranchExecution(sop: sop, onComplete: onComplete)
             }
         }
         .navigationTitle(sop.name)

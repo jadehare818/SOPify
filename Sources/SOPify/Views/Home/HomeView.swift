@@ -163,6 +163,8 @@ struct HomeView: View {
                     SOPExecutionView(sop: sop)
                 case .flow:
                     FlowExecutionView(sop: sop)
+                case .branching:
+                    BranchExecutionView(sop: sop)
                 }
             }
             .navigationDestination(for: Category.self) { cat in
