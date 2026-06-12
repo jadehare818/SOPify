@@ -143,15 +143,37 @@ private struct BranchOptionRow: View {
 struct AddBranchOptionSheet: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Query(sort: \SOP.name) private var allSOPs: [SOP]
 
     let step: Step
 
     @State private var mode: OptionMode = .choose
     @State private var label = ""
     @State private var actionText = ""
+    @State private var subSOPMode: SubSOPMode = .pick
+    @State private var newSOPName = ""
+    @State private var searchText = ""
+    @State private var showingCycleAlert = false
 
     enum OptionMode {
         case choose, textAction, subSOP
+    }
+
+    enum SubSOPMode {
+        case pick, createNew, linkExisting
+    }
+
+    private var parentSOP: SOP? { step.sop }
+
+    private var linkableSOPs: [SOP] {
+        guard let parent = parentSOP else { return [] }
+        let alreadyLinkedIds = Set(step.branchOptions.compactMap(\.targetSOPId))
+        return allSOPs.filter { sop in
+            sop.id != parent.id &&
+            !alreadyLinkedIds.contains(sop.id) &&
+            !sop.isOneShot &&
+            (searchText.isEmpty || sop.name.localizedCaseInsensitiveContains(searchText))
+        }
     }
 
     var body: some View {
@@ -168,6 +190,7 @@ struct AddBranchOptionSheet: View {
                         }
                         Button {
                             mode = .subSOP
+                            subSOPMode = .pick
                         } label: {
                             Label("Sub-SOP", systemImage: "folder.fill")
                                 .foregroundStyle(.primary)
@@ -183,14 +206,10 @@ struct AddBranchOptionSheet: View {
                         }
                     }
                 case .subSOP:
-                    Form {
-                        Section("Option Label") {
-                            TextField("e.g. Route A", text: $label)
-                        }
-                    }
+                    subSOPContent
                 }
             }
-            .navigationTitle(mode == .choose ? "Add Option" : (mode == .textAction ? "Text Action" : "Sub-SOP"))
+            .navigationTitle(navigationTitle)
             #if !os(macOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
@@ -198,9 +217,9 @@ struct AddBranchOptionSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
-                if mode != .choose {
+                if mode == .textAction {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Add") { addOption() }
+                        Button("Add") { addTextAction() }
                             .disabled(label.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                     ToolbarItem(placement: .navigation) {
@@ -209,43 +228,185 @@ struct AddBranchOptionSheet: View {
                         }
                     }
                 }
+                if mode == .subSOP {
+                    if subSOPMode == .createNew {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Create") { createNewSubSOP() }
+                                .disabled(label.trimmingCharacters(in: .whitespaces).isEmpty || newSOPName.trimmingCharacters(in: .whitespaces).isEmpty)
+                        }
+                    }
+                    ToolbarItem(placement: .navigation) {
+                        Button {
+                            if subSOPMode == .pick {
+                                mode = .choose
+                            } else {
+                                subSOPMode = .pick
+                            }
+                        } label: {
+                            Image(systemName: "chevron.left")
+                        }
+                    }
+                }
+            }
+            .alert("Circular Dependency", isPresented: $showingCycleAlert) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("This SOP already contains the current branch (directly or indirectly). Linking it would create a cycle.")
             }
         }
     }
 
-    private func addOption() {
+    private var navigationTitle: String {
+        switch mode {
+        case .choose: return "Add Option"
+        case .textAction: return "Text Action"
+        case .subSOP:
+            switch subSOPMode {
+            case .pick: return "Sub-SOP"
+            case .createNew: return "New Sub-SOP"
+            case .linkExisting: return "Link Existing"
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var subSOPContent: some View {
+        switch subSOPMode {
+        case .pick:
+            List {
+                Button { subSOPMode = .createNew } label: {
+                    Label("Create New", systemImage: "plus.circle")
+                }
+                Button { subSOPMode = .linkExisting } label: {
+                    Label("Link Existing SOP", systemImage: "link")
+                }
+            }
+        case .createNew:
+            Form {
+                Section("Option Label") {
+                    TextField("e.g. Route A", text: $label)
+                }
+                Section("New SOP Name") {
+                    TextField("e.g. 走高速路线", text: $newSOPName)
+                }
+            }
+        case .linkExisting:
+            VStack {
+                if label.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Form {
+                        Section("Option Label") {
+                            TextField("e.g. Route A", text: $label)
+                        }
+                    }
+                    .frame(height: 100)
+                }
+                List(linkableSOPs) { sop in
+                    Button {
+                        linkExistingSOP(sop)
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(sop.name).foregroundStyle(.primary)
+                                Text("\(sop.steps.count) steps · \(sop.type.rawValue)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "plus.circle")
+                                .foregroundStyle(Color.accentColor)
+                        }
+                    }
+                }
+                .overlay {
+                    if linkableSOPs.isEmpty {
+                        ContentUnavailableView("No SOPs Available",
+                                               systemImage: "tray",
+                                               description: Text("All SOPs are already linked or none exist."))
+                    }
+                }
+                .searchable(text: $searchText, prompt: "Search SOPs")
+            }
+        }
+    }
+
+    private func addTextAction() {
         let trimmedLabel = label.trimmingCharacters(in: .whitespaces)
         guard !trimmedLabel.isEmpty else { return }
+        let trimmedAction = actionText.trimmingCharacters(in: .whitespaces)
+        let option = BranchOption(
+            label: trimmedLabel,
+            order: step.branchOptions.count,
+            actionText: trimmedAction.isEmpty ? trimmedLabel : trimmedAction
+        )
+        option.step = step
+        context.insert(option)
+        try? context.save()
+        dismiss()
+    }
 
-        switch mode {
-        case .textAction:
-            let trimmedAction = actionText.trimmingCharacters(in: .whitespaces)
-            let option = BranchOption(
-                label: trimmedLabel,
-                order: step.branchOptions.count,
-                actionText: trimmedAction.isEmpty ? trimmedLabel : trimmedAction
-            )
-            option.step = step
-            context.insert(option)
+    private func createNewSubSOP() {
+        let trimmedLabel = label.trimmingCharacters(in: .whitespaces)
+        let trimmedName = newSOPName.trimmingCharacters(in: .whitespaces)
+        guard !trimmedLabel.isEmpty, !trimmedName.isEmpty else { return }
 
-        case .subSOP:
-            let childSOP = SOP(name: trimmedLabel, type: .checklist)
-            childSOP.parentStepId = step.id
-            context.insert(childSOP)
+        let childSOP = SOP(name: trimmedName, type: .checklist)
+        childSOP.parentStepId = step.id
+        context.insert(childSOP)
 
-            let option = BranchOption(
-                label: trimmedLabel,
-                order: step.branchOptions.count,
-                targetSOPId: childSOP.id
-            )
-            option.step = step
-            context.insert(option)
+        let option = BranchOption(
+            label: trimmedLabel,
+            order: step.branchOptions.count,
+            targetSOPId: childSOP.id
+        )
+        option.step = step
+        context.insert(option)
+        try? context.save()
+        dismiss()
+    }
 
-        case .choose:
+    private func linkExistingSOP(_ sop: SOP) {
+        let trimmedLabel = label.trimmingCharacters(in: .whitespaces)
+        let finalLabel = trimmedLabel.isEmpty ? sop.name : trimmedLabel
+
+        if let parent = parentSOP, wouldCreateCycle(linking: sop, to: parent) {
+            showingCycleAlert = true
             return
         }
 
+        let option = BranchOption(
+            label: finalLabel,
+            order: step.branchOptions.count,
+            targetSOPId: sop.id
+        )
+        option.step = step
+        context.insert(option)
         try? context.save()
         dismiss()
+    }
+
+    private func wouldCreateCycle(linking candidate: SOP, to parent: SOP) -> Bool {
+        var visited = Set<UUID>()
+        return hasPath(from: candidate, to: parent.id, visited: &visited)
+    }
+
+    private func hasPath(from sop: SOP, to targetId: UUID, visited: inout Set<UUID>) -> Bool {
+        if sop.id == targetId { return true }
+        if visited.contains(sop.id) { return false }
+        visited.insert(sop.id)
+
+        let nestedIds = sop.steps.compactMap(\.nestedSOPId)
+        let branchTargetIds = sop.steps.flatMap { $0.branchOptions.compactMap(\.targetSOPId) }
+        let allChildIds = nestedIds + branchTargetIds
+
+        for childId in allChildIds {
+            if childId == targetId { return true }
+            let descriptor = FetchDescriptor<SOP>(predicate: #Predicate { $0.id == childId })
+            if let child = try? context.fetch(descriptor).first {
+                if hasPath(from: child, to: targetId, visited: &visited) {
+                    return true
+                }
+            }
+        }
+        return false
     }
 }
