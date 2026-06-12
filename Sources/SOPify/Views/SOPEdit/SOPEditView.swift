@@ -2,14 +2,15 @@ import SwiftUI
 import SwiftData
 
 struct SOPEditView: View {
-    @Environment(\.modelContext) private var context
+    @Environment(\.modelContext) private var parentContext
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \Category.order) private var categories: [Category]
 
-    let initialEditing: SOP?
+    let initialEditingId: UUID?
     let isOneShot: Bool
 
-    @State private var activeSOP: SOP?
+    @State private var editContext: ModelContext?
+    @State private var editingSOP: SOP?
     @State private var name: String = ""
     @State private var selectedCategory: Category?
     @State private var selectedType: SOPType = .checklist
@@ -19,13 +20,13 @@ struct SOPEditView: View {
     @State private var branchQuestionDraft = ""
     @State private var editingBranchStep: Step?
     @State private var showingTriggerSheet = false
+    @State private var isReady = false
 
-    private var editing: SOP? { activeSOP ?? initialEditing }
+    private var editing: SOP? { editingSOP }
 
     init(editing: SOP? = nil, isOneShot: Bool = false) {
-        self.initialEditing = editing
+        self.initialEditingId = editing?.id
         self.isOneShot = editing?.isOneShot ?? isOneShot
-        _activeSOP = State(initialValue: nil)
         _name = State(initialValue: editing?.name ?? "")
         _selectedCategory = State(initialValue: editing?.category)
         _selectedType = State(initialValue: editing?.type ?? .checklist)
@@ -37,187 +38,223 @@ struct SOPEditView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Name") {
-                    TextField(isOneShot ? "e.g. 明早出门准备" : "e.g. Pack for swim", text: $name)
-                }
-
-                if !isOneShot {
-                    Section("Category") {
-                        Picker("Category", selection: $selectedCategory) {
-                            Text("None").tag(nil as Category?)
-                            ForEach(categories) { cat in
-                                Label(cat.name, systemImage: cat.icon).tag(cat as Category?)
-                            }
-                        }
-                    }
-                }
-
-                if initialEditing == nil && activeSOP == nil && !isOneShot {
-                    Section("Type") {
-                        Picker("Type", selection: $selectedType) {
-                            Text("Checklist").tag(SOPType.checklist)
-                            Text("Flow").tag(SOPType.flow)
-                            Text("Branching").tag(SOPType.branching)
-                        }
-                        .pickerStyle(.segmented)
-                    }
-                }
-
-                if let existing = editing, existing.type == .checklist {
-                    Section {
-                        Button { selectedType = .flow } label: {
-                            Label("Upgrade to Flow", systemImage: "arrow.up.circle")
-                        }
-                        Button { selectedType = .branching } label: {
-                            Label("Upgrade to Branching", systemImage: "arrow.triangle.branch")
-                        }
-                    }
-                }
-
-                if let existing = editing, existing.type == .flow {
-                    Section {
-                        Button { selectedType = .branching } label: {
-                            Label("Upgrade to Branching", systemImage: "arrow.triangle.branch")
-                        }
-                    }
-                }
-
-                // MARK: - Steps section (unified)
-                Section("Steps") {
-                    if editing != nil {
-                        ForEach(orderedSteps) { step in
-                            EditStepRow(step: step, onEditNested: {
-                                if let childId = step.nestedSOPId {
-                                    nestedEditTarget = fetchChild(id: childId)
-                                }
-                            }, onEditBranch: {
-                                editingBranchStep = step
-                            })
-                        }
-                        .onDelete { indexSet in
-                            deleteSteps(at: indexSet)
-                        }
-                        .onMove { source, destination in
-                            moveSteps(from: source, to: destination)
-                        }
-                    }
-
-                    Menu {
-                        Button { addTextStep() } label: {
-                            Label("Text Step", systemImage: "text.badge.plus")
-                        }
-                        Button { addSubSOP() } label: {
-                            Label("Sub-SOP", systemImage: "folder.badge.plus")
-                        }
-                        if selectedType == .branching {
-                            Button {
-                                branchQuestionDraft = ""
-                                showingBranchAlert = true
-                            } label: {
-                                Label("Branch Point", systemImage: "arrow.triangle.branch")
-                            }
-                        }
-                    } label: {
-                        Label("Add", systemImage: "plus.circle")
-                    }
-                }
-
-                if let existingSOP = editing, !isOneShot {
-                    Section("Triggers") {
-                        let triggerCount = existingSOP.triggers.count
-                        Button { showingTriggerSheet = true } label: {
-                            HStack {
-                                Label("Manage Triggers", systemImage: "bell.badge")
-                                Spacer()
-                                if triggerCount > 0 {
-                                    Text("\(triggerCount)")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Image(systemName: "chevron.right")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
+            Group {
+                if isReady {
+                    formContent
+                } else {
+                    ProgressView()
                 }
             }
-            .navigationTitle(initialEditing == nil && activeSOP == nil ? (isOneShot ? "临时 SOP" : "New SOP") : "Edit SOP")
+            .navigationTitle(editingSOP == nil ? (isOneShot ? "临时 SOP" : "New SOP") : "Edit SOP")
             #if !os(macOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { cancelAction() }
+                    Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save() }
                         .disabled(!canSave)
                 }
             }
-            .sheet(item: $nestedEditTarget) { childSOP in
-                SOPEditView(editing: childSOP)
+            .onAppear { setupEditContext() }
+        }
+    }
+
+    @ViewBuilder
+    private var formContent: some View {
+        Form {
+            Section("Name") {
+                TextField(isOneShot ? "e.g. 明早出门准备" : "e.g. Pack for swim", text: $name)
             }
-            .sheet(isPresented: $showingSubSOPSheet) {
-                if let parent = editing {
-                    SubSOPPickerSheet(parent: parent) { childSOP in
-                        nestedEditTarget = childSOP
+
+            if !isOneShot {
+                Section("Category") {
+                    Picker("Category", selection: $selectedCategory) {
+                        Text("None").tag(nil as Category?)
+                        ForEach(categories) { cat in
+                            Label(cat.name, systemImage: cat.icon).tag(cat as Category?)
+                        }
                     }
                 }
             }
-            .alert("New Branch Point", isPresented: $showingBranchAlert) {
-                TextField("e.g. 现在几点？", text: $branchQuestionDraft)
-                Button("Create") {
-                    addBranchPoint(question: branchQuestionDraft)
+
+            if initialEditingId == nil && editingSOP == nil && !isOneShot {
+                Section("Type") {
+                    Picker("Type", selection: $selectedType) {
+                        Text("Checklist").tag(SOPType.checklist)
+                        Text("Flow").tag(SOPType.flow)
+                        Text("Branching").tag(SOPType.branching)
+                    }
+                    .pickerStyle(.segmented)
                 }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Enter the condition or question.")
             }
-            .sheet(item: $editingBranchStep) { step in
-                BranchPointEditView(step: step)
+
+            if let existing = editing, existing.type == .checklist {
+                Section {
+                    Button { selectedType = .flow } label: {
+                        Label("Upgrade to Flow", systemImage: "arrow.up.circle")
+                    }
+                    Button { selectedType = .branching } label: {
+                        Label("Upgrade to Branching", systemImage: "arrow.triangle.branch")
+                    }
+                }
             }
-            .sheet(isPresented: $showingTriggerSheet) {
-                if let existingSOP = editing {
-                    TriggerEditSheet(sop: existingSOP)
+
+            if let existing = editing, existing.type == .flow {
+                Section {
+                    Button { selectedType = .branching } label: {
+                        Label("Upgrade to Branching", systemImage: "arrow.triangle.branch")
+                    }
+                }
+            }
+
+            // MARK: - Steps section (unified)
+            Section("Steps") {
+                if editing != nil {
+                    ForEach(orderedSteps) { step in
+                        EditStepRow(step: step, onEditNested: {
+                            if let childId = step.nestedSOPId {
+                                nestedEditTarget = fetchChild(id: childId)
+                            }
+                        }, onEditBranch: {
+                            editingBranchStep = step
+                        })
+                    }
+                    .onDelete { indexSet in
+                        deleteSteps(at: indexSet)
+                    }
+                    .onMove { source, destination in
+                        moveSteps(from: source, to: destination)
+                    }
+                }
+
+                Menu {
+                    Button { addTextStep() } label: {
+                        Label("Text Step", systemImage: "text.badge.plus")
+                    }
+                    Button { addSubSOP() } label: {
+                        Label("Sub-SOP", systemImage: "folder.badge.plus")
+                    }
+                    if selectedType == .branching {
+                        Button {
+                            branchQuestionDraft = ""
+                            showingBranchAlert = true
+                        } label: {
+                            Label("Branch Point", systemImage: "arrow.triangle.branch")
+                        }
+                    }
+                } label: {
+                    Label("Add", systemImage: "plus.circle")
+                }
+            }
+
+            if let existingSOP = editing, !isOneShot {
+                Section("Triggers") {
+                    let triggerCount = existingSOP.triggers.count
+                    Button { showingTriggerSheet = true } label: {
+                        HStack {
+                            Label("Manage Triggers", systemImage: "bell.badge")
+                            Spacer()
+                            if triggerCount > 0 {
+                                Text("\(triggerCount)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Image(systemName: "chevron.right")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
         }
+        .sheet(item: $nestedEditTarget) { childSOP in
+            SOPEditView(editing: childSOP)
+        }
+        .sheet(isPresented: $showingSubSOPSheet) {
+            if let ctx = editContext, let parent = editing {
+                SubSOPPickerSheet(parent: parent) { childSOP in
+                    nestedEditTarget = childSOP
+                }
+                .modelContext(ctx)
+            }
+        }
+        .alert("New Branch Point", isPresented: $showingBranchAlert) {
+            TextField("e.g. 现在几点？", text: $branchQuestionDraft)
+            Button("Create") {
+                addBranchPoint(question: branchQuestionDraft)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Enter the condition or question.")
+        }
+        .sheet(item: $editingBranchStep) { step in
+            if let ctx = editContext {
+                BranchPointEditView(step: step)
+                    .modelContext(ctx)
+            }
+        }
+        .sheet(isPresented: $showingTriggerSheet) {
+            if let existingSOP = editing {
+                TriggerEditSheet(sop: existingSOP)
+            }
+        }
+    }
+
+    // MARK: - Edit context setup
+
+    private func setupEditContext() {
+        guard editContext == nil else { return }
+        let ctx = ModelContext(parentContext.container)
+        ctx.autosaveEnabled = false
+        editContext = ctx
+
+        if let id = initialEditingId {
+            let descriptor = FetchDescriptor<SOP>(predicate: #Predicate { $0.id == id })
+            editingSOP = try? ctx.fetch(descriptor).first
+            if let sop = editingSOP {
+                name = sop.name
+                selectedCategory = sop.category
+                selectedType = sop.type
+            }
+        }
+        isReady = true
     }
 
     // MARK: - Validation
 
     private var canSave: Bool {
-        let hasName = !name.trimmingCharacters(in: .whitespaces).isEmpty
-        if editing != nil {
-            return hasName
-        } else {
-            return hasName
-        }
+        !name.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     // MARK: - Save
 
     private func save() {
+        guard let ctx = editContext else { return }
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
 
         if let existing = editing {
             existing.name = trimmedName
             existing.updatedAt = .now
-            existing.category = selectedCategory
+            // Find category in edit context
+            if let catId = selectedCategory?.id {
+                let catDesc = FetchDescriptor<Category>(predicate: #Predicate { $0.id == catId })
+                existing.category = try? ctx.fetch(catDesc).first
+            } else {
+                existing.category = nil
+            }
             existing.typeRaw = selectedType.rawValue
-            try? context.save()
         } else {
             let sop = SOP(name: trimmedName, type: selectedType, isOneShot: isOneShot)
-            sop.category = selectedCategory
-            context.insert(sop)
-            try? context.save()
+            if let catId = selectedCategory?.id {
+                let catDesc = FetchDescriptor<Category>(predicate: #Predicate { $0.id == catId })
+                sop.category = try? ctx.fetch(catDesc).first
+            }
+            ctx.insert(sop)
         }
-        dismiss()
-    }
 
-    private func cancelAction() {
-        context.rollback()
+        try? ctx.save()
         dismiss()
     }
 
@@ -226,11 +263,15 @@ struct SOPEditView: View {
     @discardableResult
     private func ensurePersisted() -> SOP {
         if let existing = editing { return existing }
+        guard let ctx = editContext else { fatalError() }
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         let sop = SOP(name: trimmedName.isEmpty ? "Untitled" : trimmedName, type: selectedType, isOneShot: isOneShot)
-        sop.category = selectedCategory
-        context.insert(sop)
-        activeSOP = sop
+        if let catId = selectedCategory?.id {
+            let catDesc = FetchDescriptor<Category>(predicate: #Predicate { $0.id == catId })
+            sop.category = try? ctx.fetch(catDesc).first
+        }
+        ctx.insert(sop)
+        editingSOP = sop
         return sop
     }
 
@@ -263,23 +304,23 @@ struct SOPEditView: View {
     }
 
     private func deleteSteps(at indexSet: IndexSet) {
-        guard let parent = editing else { return }
+        guard let ctx = editContext, let parent = editing else { return }
         let steps = orderedSteps
         for index in indexSet {
             let step = steps[index]
             if let childId = step.nestedSOPId, let child = fetchChild(id: childId) {
-                context.delete(child)
+                ctx.delete(child)
             }
             if step.isBranch {
                 for option in step.branchOptions {
                     if let sopId = option.targetSOPId, let child = fetchChild(id: sopId) {
-                        context.delete(child)
+                        ctx.delete(child)
                     }
-                    context.delete(option)
+                    ctx.delete(option)
                 }
             }
             parent.steps.removeAll { $0.id == step.id }
-            context.delete(step)
+            ctx.delete(step)
         }
         reorderSteps(parent)
     }
@@ -302,8 +343,9 @@ struct SOPEditView: View {
     }
 
     private func fetchChild(id: UUID) -> SOP? {
+        guard let ctx = editContext else { return nil }
         let descriptor = FetchDescriptor<SOP>(predicate: #Predicate { $0.id == id })
-        return try? context.fetch(descriptor).first
+        return try? ctx.fetch(descriptor).first
     }
 }
 
