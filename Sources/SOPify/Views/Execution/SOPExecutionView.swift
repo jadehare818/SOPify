@@ -13,6 +13,7 @@ struct SOPExecutionView: View {
     @State private var feedbackDraft = ""
     @State private var showingOneShotPrompt = false
     @State private var activeChildSOP: SOP?
+    @State private var showingEdit = false
 
     private var orderedSteps: [Step] {
         sop.steps.sorted(by: { $0.order < $1.order })
@@ -88,6 +89,11 @@ struct SOPExecutionView: View {
                 }
                 .disabled(currentStepID == nil)
             }
+            ToolbarItem(placement: .primaryAction) {
+                Button { showingEdit = true } label: {
+                    Image(systemName: "pencil.circle")
+                }
+            }
         }
         .sheet(isPresented: $showingFeedback) {
             if let id = currentStepID, let step = orderedSteps.first(where: { $0.id == id }) {
@@ -107,6 +113,9 @@ struct SOPExecutionView: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showingEdit) {
+            SOPEditView(editing: sop)
         }
         .alert("做完啦", isPresented: $showingOneShotPrompt) {
             Button("删了", role: .destructive) { deleteOneShot() }
