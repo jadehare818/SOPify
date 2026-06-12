@@ -64,9 +64,8 @@ struct BranchExecutionView: View {
                                 isCurrent: isCurrent
                             ) {
                                 withAnimation(.easeInOut(duration: 0.3)) {
-                                    complete(step)
+                                    toggle(step)
                                 }
-                                scrollToNext(proxy: proxy, excluding: step.id)
                             }
                             .id(step.id)
                         }
@@ -177,6 +176,34 @@ struct BranchExecutionView: View {
         context.insert(r)
         try? context.save()
         record = r
+    }
+
+    private func toggle(_ step: Step) {
+        guard let record else { return }
+        if completedStepIDs.contains(step.id) {
+            completedStepIDs.remove(step.id)
+            if let latest = record.completions
+                .filter({ $0.stepId == step.id })
+                .sorted(by: { $0.completedAt > $1.completedAt })
+                .first {
+                context.delete(latest)
+            }
+        } else {
+            for preceding in orderedSteps {
+                if preceding.id == step.id { break }
+                if !completedStepIDs.contains(preceding.id) {
+                    completedStepIDs.insert(preceding.id)
+                    let c = StepCompletion(stepId: preceding.id, completedAt: .now)
+                    c.record = record
+                    context.insert(c)
+                }
+            }
+            completedStepIDs.insert(step.id)
+            let completion = StepCompletion(stepId: step.id, completedAt: .now)
+            completion.record = record
+            context.insert(completion)
+        }
+        try? context.save()
     }
 
     private func complete(_ step: Step) {
@@ -423,11 +450,14 @@ struct NestedBranchExecution: View {
                                 isCurrent: isCurrent
                             ) {
                                 withAnimation(.easeInOut(duration: 0.3)) {
-                                    completedStepIDs.insert(step.id)
-                                }
-                                if let nextID = orderedSteps.first(where: { !completedStepIDs.contains($0.id) && $0.id != step.id })?.id {
-                                    withAnimation {
-                                        proxy.scrollTo(nextID, anchor: .center)
+                                    if completedStepIDs.contains(step.id) {
+                                        completedStepIDs.remove(step.id)
+                                    } else {
+                                        for preceding in orderedSteps {
+                                            if preceding.id == step.id { break }
+                                            completedStepIDs.insert(preceding.id)
+                                        }
+                                        completedStepIDs.insert(step.id)
                                     }
                                 }
                             }

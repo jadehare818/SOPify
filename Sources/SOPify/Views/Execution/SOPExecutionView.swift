@@ -137,6 +137,16 @@ struct SOPExecutionView: View {
                 context.delete(latest)
             }
         } else {
+            // Auto-complete all preceding incomplete steps
+            for preceding in orderedSteps {
+                if preceding.id == step.id { break }
+                if !completedStepIDs.contains(preceding.id) {
+                    completedStepIDs.insert(preceding.id)
+                    let c = StepCompletion(stepId: preceding.id, completedAt: .now)
+                    c.record = record
+                    context.insert(c)
+                }
+            }
             completedStepIDs.insert(step.id)
             let completion = StepCompletion(stepId: step.id, completedAt: .now)
             completion.record = record
@@ -409,11 +419,14 @@ struct NestedFlowExecution: View {
                                 isCurrent: isCurrent
                             ) {
                                 withAnimation(.easeInOut(duration: 0.3)) {
-                                    completedStepIDs.insert(step.id)
-                                }
-                                if let nextID = orderedSteps.first(where: { !completedStepIDs.contains($0.id) && $0.id != step.id })?.id {
-                                    withAnimation {
-                                        proxy.scrollTo(nextID, anchor: .center)
+                                    if completedStepIDs.contains(step.id) {
+                                        completedStepIDs.remove(step.id)
+                                    } else {
+                                        for preceding in orderedSteps {
+                                            if preceding.id == step.id { break }
+                                            completedStepIDs.insert(preceding.id)
+                                        }
+                                        completedStepIDs.insert(step.id)
                                     }
                                 }
                             }

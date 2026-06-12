@@ -53,13 +53,7 @@ struct FlowExecutionView: View {
                                 isCurrent: isCurrent
                             ) {
                                 withAnimation(.easeInOut(duration: 0.3)) {
-                                    complete(step)
-                                }
-                                // Scroll to next step
-                                if let nextID = currentStepID {
-                                    withAnimation {
-                                        proxy.scrollTo(nextID, anchor: .center)
-                                    }
+                                    toggle(step)
                                 }
                             }
                             .id(step.id)
@@ -138,6 +132,34 @@ struct FlowExecutionView: View {
         context.insert(r)
         try? context.save()
         record = r
+    }
+
+    private func toggle(_ step: Step) {
+        guard let record else { return }
+        if completedStepIDs.contains(step.id) {
+            completedStepIDs.remove(step.id)
+            if let latest = record.completions
+                .filter({ $0.stepId == step.id })
+                .sorted(by: { $0.completedAt > $1.completedAt })
+                .first {
+                context.delete(latest)
+            }
+        } else {
+            for preceding in orderedSteps {
+                if preceding.id == step.id { break }
+                if !completedStepIDs.contains(preceding.id) {
+                    completedStepIDs.insert(preceding.id)
+                    let c = StepCompletion(stepId: preceding.id, completedAt: .now)
+                    c.record = record
+                    context.insert(c)
+                }
+            }
+            completedStepIDs.insert(step.id)
+            let completion = StepCompletion(stepId: step.id, completedAt: .now)
+            completion.record = record
+            context.insert(completion)
+        }
+        try? context.save()
     }
 
     private func complete(_ step: Step) {
