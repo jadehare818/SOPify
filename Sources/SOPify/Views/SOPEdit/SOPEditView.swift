@@ -6,9 +6,10 @@ struct SOPEditView: View {
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \Category.order) private var categories: [Category]
 
-    let editing: SOP?
+    let initialEditing: SOP?
     let isOneShot: Bool
 
+    @State private var activeSOP: SOP?
     @State private var name: String = ""
     @State private var selectedCategory: Category?
     @State private var selectedType: SOPType = .checklist
@@ -18,33 +19,16 @@ struct SOPEditView: View {
     @State private var branchQuestionDraft = ""
     @State private var editingBranchStep: Step?
     @State private var showingTriggerSheet = false
-    @State private var showingAddMenu = false
 
-    // Unified step list for new SOPs (before first save)
-    @State private var draftSteps: [DraftStep] = [.text("")]
-
-    struct DraftStep: Identifiable {
-        let id = UUID()
-        var kind: DraftStepKind
-        enum DraftStepKind {
-            case text(String)
-        }
-        static func text(_ s: String) -> DraftStep { DraftStep(kind: .text(s)) }
-        var text: String {
-            get { if case .text(let s) = kind { return s } else { return "" } }
-            set { kind = .text(newValue) }
-        }
-    }
+    private var editing: SOP? { activeSOP ?? initialEditing }
 
     init(editing: SOP? = nil, isOneShot: Bool = false) {
-        self.editing = editing
+        self.initialEditing = editing
         self.isOneShot = editing?.isOneShot ?? isOneShot
+        _activeSOP = State(initialValue: nil)
         _name = State(initialValue: editing?.name ?? "")
         _selectedCategory = State(initialValue: editing?.category)
         _selectedType = State(initialValue: editing?.type ?? .checklist)
-        if editing == nil {
-            _draftSteps = State(initialValue: [.text("")])
-        }
     }
 
     private var orderedSteps: [Step] {
@@ -69,7 +53,7 @@ struct SOPEditView: View {
                     }
                 }
 
-                if editing == nil && !isOneShot {
+                if initialEditing == nil && activeSOP == nil && !isOneShot {
                     Section("Type") {
                         Picker("Type", selection: $selectedType) {
                             Text("Checklist").tag(SOPType.checklist)
@@ -100,8 +84,8 @@ struct SOPEditView: View {
                 }
 
                 // MARK: - Steps section (unified)
-                if editing != nil {
-                    Section("Steps") {
+                Section("Steps") {
+                    if editing != nil {
                         ForEach(orderedSteps) { step in
                             EditStepRow(step: step, onEditNested: {
                                 if let childId = step.nestedSOPId {
@@ -117,38 +101,25 @@ struct SOPEditView: View {
                         .onMove { source, destination in
                             moveSteps(from: source, to: destination)
                         }
-
-                        Menu {
-                            Button { addTextStep() } label: {
-                                Label("Text Step", systemImage: "text.badge.plus")
-                            }
-                            Button { showingSubSOPSheet = true } label: {
-                                Label("Sub-SOP", systemImage: "folder.badge.plus")
-                            }
-                            if selectedType == .branching {
-                                Button {
-                                    branchQuestionDraft = ""
-                                    showingBranchAlert = true
-                                } label: {
-                                    Label("Branch Point", systemImage: "arrow.triangle.branch")
-                                }
-                            }
-                        } label: {
-                            Label("Add", systemImage: "plus.circle")
-                        }
                     }
-                } else {
-                    // New SOP — simple text step editor
-                    Section("Steps") {
-                        ForEach($draftSteps) { $step in
-                            StepEditRow(text: $step.text) {
-                                draftSteps.removeAll { $0.id == step.id }
-                                if draftSteps.isEmpty { draftSteps = [.text("")] }
+
+                    Menu {
+                        Button { addTextStep() } label: {
+                            Label("Text Step", systemImage: "text.badge.plus")
+                        }
+                        Button { addSubSOP() } label: {
+                            Label("Sub-SOP", systemImage: "folder.badge.plus")
+                        }
+                        if selectedType == .branching {
+                            Button {
+                                branchQuestionDraft = ""
+                                showingBranchAlert = true
+                            } label: {
+                                Label("Branch Point", systemImage: "arrow.triangle.branch")
                             }
                         }
-                        Button { draftSteps.append(.text("")) } label: {
-                            Label("Add Step", systemImage: "plus.circle")
-                        }
+                    } label: {
+                        Label("Add", systemImage: "plus.circle")
                     }
                 }
 
@@ -171,13 +142,13 @@ struct SOPEditView: View {
                     }
                 }
             }
-            .navigationTitle(editing == nil ? (isOneShot ? "临时 SOP" : "New SOP") : "Edit SOP")
+            .navigationTitle(initialEditing == nil && activeSOP == nil ? (isOneShot ? "临时 SOP" : "New SOP") : "Edit SOP")
             #if !os(macOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") { cancelAction() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save() }
@@ -219,10 +190,9 @@ struct SOPEditView: View {
     private var canSave: Bool {
         let hasName = !name.trimmingCharacters(in: .whitespaces).isEmpty
         if editing != nil {
-            return hasName && !orderedSteps.isEmpty
+            return hasName
         } else {
-            let hasStep = draftSteps.contains(where: { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty })
-            return hasName && hasStep
+            return hasName
         }
     }
 
@@ -236,28 +206,42 @@ struct SOPEditView: View {
             existing.updatedAt = .now
             existing.category = selectedCategory
             existing.typeRaw = selectedType.rawValue
-            // Steps are already managed in-place via add/delete/move
             try? context.save()
         } else {
-            let nonEmptySteps = draftSteps
-                .map { $0.text.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty }
-
             let sop = SOP(name: trimmedName, type: selectedType, isOneShot: isOneShot)
             sop.category = selectedCategory
-            sop.steps = nonEmptySteps.enumerated().map { (i, text) in
-                Step(text: text, order: i)
-            }
             context.insert(sop)
             try? context.save()
         }
         dismiss()
     }
 
-    // MARK: - Step management (editing mode)
+    private func cancelAction() {
+        if let created = activeSOP {
+            context.delete(created)
+            try? context.save()
+        }
+        dismiss()
+    }
+
+    // MARK: - Lazy SOP creation (auto-persist when adding steps in new mode)
+
+    @discardableResult
+    private func ensurePersisted() -> SOP {
+        if let existing = editing { return existing }
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        let sop = SOP(name: trimmedName.isEmpty ? "Untitled" : trimmedName, type: selectedType, isOneShot: isOneShot)
+        sop.category = selectedCategory
+        context.insert(sop)
+        try? context.save()
+        activeSOP = sop
+        return sop
+    }
+
+    // MARK: - Step management
 
     private func addTextStep() {
-        guard let parent = editing else { return }
+        let parent = ensurePersisted()
         let order = parent.steps.count
         let step = Step(text: "", order: order)
         parent.steps.append(step)
@@ -265,8 +249,13 @@ struct SOPEditView: View {
         try? context.save()
     }
 
+    private func addSubSOP() {
+        ensurePersisted()
+        showingSubSOPSheet = true
+    }
+
     private func addBranchPoint(question: String) {
-        guard let parent = editing else { return }
+        let parent = ensurePersisted()
         let trimmed = question.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
 
