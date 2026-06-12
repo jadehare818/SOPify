@@ -4,17 +4,27 @@ import SwiftData
 struct ContentView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
 
     var body: some View {
-        Group {
-            if sizeClass == .regular {
-                iPadRootView()
-            } else {
-                HomeView()
+        if !hasCompletedOnboarding {
+            OnboardingView {
+                hasCompletedOnboarding = true
             }
-        }
-        .onAppear {
-            DefaultSeeder.seedIfNeeded(context: context)
+            .onAppear {
+                DefaultSeeder.seedIfNeeded(context: context)
+            }
+        } else {
+            Group {
+                if sizeClass == .regular {
+                    iPadRootView()
+                } else {
+                    HomeView()
+                }
+            }
+            .onAppear {
+                DefaultSeeder.seedIfNeeded(context: context)
+            }
         }
     }
 }
