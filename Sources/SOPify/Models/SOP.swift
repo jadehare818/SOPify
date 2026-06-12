@@ -17,6 +17,8 @@ final class SOP {
     @Relationship(deleteRule: .cascade, inverse: \Step.sop)
     var steps: [Step] = []
 
+    var category: Category?
+
     var type: SOPType {
         get { SOPType(rawValue: typeRaw) ?? .checklist }
         set { typeRaw = newValue.rawValue }

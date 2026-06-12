@@ -58,4 +58,41 @@ final class SOPModelTests: XCTestCase {
         let fetched = try context.fetch(FetchDescriptor<SOP>())
         XCTAssertEqual(fetched.first?.isOneShot, true)
     }
+
+    func testCategoryHoldsSOPs() throws {
+        let container = try InMemoryContainer.make()
+        let context = ModelContext(container)
+
+        let cat = SOPify.Category(name: "生活", icon: "house.fill", order: 0)
+        context.insert(cat)
+
+        let sop = SOP(name: "Morning routine")
+        sop.category = cat
+        context.insert(sop)
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<SOPify.Category>())
+        XCTAssertEqual(fetched.first?.sops.count, 1)
+        XCTAssertEqual(fetched.first?.sops.first?.name, "Morning routine")
+    }
+
+    func testDeleteCategoryNullifiesSOPs() throws {
+        let container = try InMemoryContainer.make()
+        let context = ModelContext(container)
+
+        let cat = SOPify.Category(name: "Work", icon: "briefcase.fill", order: 0)
+        context.insert(cat)
+
+        let sop = SOP(name: "Meeting prep")
+        sop.category = cat
+        context.insert(sop)
+        try context.save()
+
+        context.delete(cat)
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<SOP>())
+        XCTAssertEqual(fetched.count, 1)
+        XCTAssertNil(fetched.first?.category)
+    }
 }

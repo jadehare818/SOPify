@@ -4,7 +4,7 @@ import SwiftData
 
 enum InMemoryContainer {
     static func make() throws -> ModelContainer {
-        let schema = Schema([SOP.self, Step.self, ExecutionRecord.self, StepCompletion.self])
+        let schema = Schema([SOP.self, Step.self, ExecutionRecord.self, StepCompletion.self, SOPify.Category.self])
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         return try ModelContainer(for: schema, configurations: [config])
     }

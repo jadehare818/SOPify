@@ -4,12 +4,14 @@ import SwiftData
 struct SOPEditView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Query(sort: \Category.order) private var categories: [Category]
 
     let editing: SOP?
     let isOneShot: Bool
 
     @State private var name: String = ""
     @State private var stepTexts: [String] = [""]
+    @State private var selectedCategory: Category?
 
     init(editing: SOP? = nil, isOneShot: Bool = false) {
         self.editing = editing
@@ -19,6 +21,7 @@ struct SOPEditView: View {
             .sorted(by: { $0.order < $1.order })
             .map(\.text)
         _stepTexts = State(initialValue: texts?.isEmpty == false ? texts! : [""])
+        _selectedCategory = State(initialValue: editing?.category)
     }
 
     var body: some View {
@@ -26,6 +29,17 @@ struct SOPEditView: View {
             Form {
                 Section("Name") {
                     TextField(isOneShot ? "e.g. 明早出门准备" : "e.g. Pack for swim", text: $name)
+                }
+
+                if !isOneShot {
+                    Section("Category") {
+                        Picker("Category", selection: $selectedCategory) {
+                            Text("None").tag(nil as Category?)
+                            ForEach(categories) { cat in
+                                Label(cat.name, systemImage: cat.icon).tag(cat as Category?)
+                            }
+                        }
+                    }
                 }
 
                 Section("Steps") {
@@ -72,6 +86,7 @@ struct SOPEditView: View {
         if let existing = editing {
             existing.name = trimmedName
             existing.updatedAt = .now
+            existing.category = selectedCategory
             for step in existing.steps {
                 context.delete(step)
             }
@@ -80,6 +95,7 @@ struct SOPEditView: View {
             }
         } else {
             let sop = SOP(name: trimmedName, isOneShot: isOneShot)
+            sop.category = selectedCategory
             sop.steps = nonEmptySteps.enumerated().map { (i, text) in
                 Step(text: text, order: i)
             }
@@ -92,12 +108,12 @@ struct SOPEditView: View {
 
 #Preview("New") {
     SOPEditView()
-        .modelContainer(for: [SOP.self, Step.self, ExecutionRecord.self, StepCompletion.self],
+        .modelContainer(for: [SOP.self, Step.self, ExecutionRecord.self, StepCompletion.self, Category.self],
                         inMemory: true)
 }
 
 #Preview("Temp") {
     SOPEditView(isOneShot: true)
-        .modelContainer(for: [SOP.self, Step.self, ExecutionRecord.self, StepCompletion.self],
+        .modelContainer(for: [SOP.self, Step.self, ExecutionRecord.self, StepCompletion.self, Category.self],
                         inMemory: true)
 }
