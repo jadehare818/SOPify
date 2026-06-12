@@ -8,6 +8,7 @@ struct ManageCategoriesView: View {
     @State private var newName = ""
     @State private var newIcon = "folder.fill"
     @State private var notificationsPaused = NotificationService.shared.isPaused
+    @State private var showingImportExport = false
 
     var body: some View {
         List {
@@ -36,6 +37,14 @@ struct ManageCategoriesView: View {
                         }
                     }
             }
+
+            Section("Data") {
+                Button {
+                    showingImportExport = true
+                } label: {
+                    Label("Import / Export", systemImage: "arrow.up.arrow.down")
+                }
+            }
         }
         .navigationTitle("Settings")
         #if !os(macOS)
@@ -57,6 +66,9 @@ struct ManageCategoriesView: View {
             TextField("Name", text: $newName)
             Button("Add") { addCategory() }
             Button("Cancel", role: .cancel) { }
+        }
+        .sheet(isPresented: $showingImportExport) {
+            ImportExportView()
         }
     }
 

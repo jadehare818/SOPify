@@ -7,6 +7,9 @@ struct CategoryDetailView: View {
     let title: String
     @Query(sort: \SOP.createdAt, order: .reverse) private var allSOPs: [SOP]
     @State private var editTarget: SOP?
+    @State private var shareTarget: SOP?
+    @State private var shareData: Data?
+    @State private var showingShare = false
 
     private var sopsInCategory: [SOP] {
         if let category {
@@ -39,6 +42,14 @@ struct CategoryDetailView: View {
                         }
                         .tint(.blue)
                     }
+                    .swipeActions(edge: .leading) {
+                        Button {
+                            exportSingle(sop)
+                        } label: {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
+                        .tint(.green)
+                    }
                 }
             }
         }
@@ -59,5 +70,18 @@ struct CategoryDetailView: View {
                 BranchExecutionView(sop: sop)
             }
         }
+        .sheet(isPresented: $showingShare) {
+            if let data = shareData {
+                ShareSheet(data: data, filename: "\(shareTarget?.name ?? "sop").json")
+            }
+        }
+    }
+
+    private func exportSingle(_ sop: SOP) {
+        do {
+            shareData = try ExportService.exportSingle(sop: sop, context: context)
+            shareTarget = sop
+            showingShare = true
+        } catch {}
     }
 }
