@@ -30,9 +30,9 @@ struct BranchPointEditView: View {
                 }
 
                 Section {
-                    Toggle("Rejoin after branch", isOn: $rejoinAfter)
+                    Toggle("分支完成后继续后续步骤", isOn: $rejoinAfter)
                 } footer: {
-                    Text("When enabled, execution continues with steps after this branch point once the chosen path is complete.")
+                    Text("开启后，用户完成所选分支后会继续执行该分支点之后的步骤。")
                 }
 
                 Section("Options") {
