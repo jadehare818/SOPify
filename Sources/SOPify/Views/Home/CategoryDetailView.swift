@@ -50,7 +50,12 @@ struct CategoryDetailView: View {
             SOPEditView(editing: sop)
         }
         .navigationDestination(for: SOP.self) { sop in
-            SOPExecutionView(sop: sop)
+            switch sop.type {
+            case .checklist:
+                SOPExecutionView(sop: sop)
+            case .flow:
+                FlowExecutionView(sop: sop)
+            }
         }
     }
 }

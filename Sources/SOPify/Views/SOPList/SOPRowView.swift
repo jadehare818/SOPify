@@ -17,8 +17,15 @@ struct SOPRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(sop.name)
-                .font(.headline)
+            HStack {
+                Text(sop.name)
+                    .font(.headline)
+                if sop.type == .flow {
+                    Image(systemName: "arrow.forward.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.blue)
+                }
+            }
             HStack {
                 Text("\(sop.steps.count) steps")
                 if let last = records.first?.finishedAt {

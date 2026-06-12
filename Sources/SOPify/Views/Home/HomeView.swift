@@ -155,7 +155,12 @@ struct HomeView: View {
                 SOPEditView(editing: sop)
             }
             .navigationDestination(for: SOP.self) { sop in
-                SOPExecutionView(sop: sop)
+                switch sop.type {
+                case .checklist:
+                    SOPExecutionView(sop: sop)
+                case .flow:
+                    FlowExecutionView(sop: sop)
+                }
             }
             .navigationDestination(for: Category.self) { cat in
                 CategoryDetailView(category: cat, title: cat.name)

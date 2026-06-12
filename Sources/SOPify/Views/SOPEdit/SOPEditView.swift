@@ -12,6 +12,7 @@ struct SOPEditView: View {
     @State private var name: String = ""
     @State private var stepTexts: [String] = [""]
     @State private var selectedCategory: Category?
+    @State private var selectedType: SOPType = .checklist
 
     init(editing: SOP? = nil, isOneShot: Bool = false) {
         self.editing = editing
@@ -22,6 +23,7 @@ struct SOPEditView: View {
             .map(\.text)
         _stepTexts = State(initialValue: texts?.isEmpty == false ? texts! : [""])
         _selectedCategory = State(initialValue: editing?.category)
+        _selectedType = State(initialValue: editing?.type ?? .checklist)
     }
 
     var body: some View {
@@ -38,6 +40,26 @@ struct SOPEditView: View {
                             ForEach(categories) { cat in
                                 Label(cat.name, systemImage: cat.icon).tag(cat as Category?)
                             }
+                        }
+                    }
+                }
+
+                if editing == nil && !isOneShot {
+                    Section("Type") {
+                        Picker("Type", selection: $selectedType) {
+                            Text("Checklist").tag(SOPType.checklist)
+                            Text("Flow").tag(SOPType.flow)
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                }
+
+                if let existing = editing, existing.type == .checklist {
+                    Section {
+                        Button {
+                            selectedType = .flow
+                        } label: {
+                            Label("Upgrade to Flow", systemImage: "arrow.up.circle")
                         }
                     }
                 }
@@ -87,6 +109,7 @@ struct SOPEditView: View {
             existing.name = trimmedName
             existing.updatedAt = .now
             existing.category = selectedCategory
+            existing.typeRaw = selectedType.rawValue
             for step in existing.steps {
                 context.delete(step)
             }
@@ -94,7 +117,7 @@ struct SOPEditView: View {
                 Step(text: text, order: i)
             }
         } else {
-            let sop = SOP(name: trimmedName, isOneShot: isOneShot)
+            let sop = SOP(name: trimmedName, type: selectedType, isOneShot: isOneShot)
             sop.category = selectedCategory
             sop.steps = nonEmptySteps.enumerated().map { (i, text) in
                 Step(text: text, order: i)

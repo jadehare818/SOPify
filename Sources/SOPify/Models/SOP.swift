@@ -3,6 +3,7 @@ import SwiftData
 
 enum SOPType: String, Codable, CaseIterable {
     case checklist
+    case flow
 }
 
 @Model

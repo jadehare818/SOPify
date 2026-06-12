@@ -95,4 +95,16 @@ final class SOPModelTests: XCTestCase {
         XCTAssertEqual(fetched.count, 1)
         XCTAssertNil(fetched.first?.category)
     }
+
+    func testSOPCanBeCreatedAsFlow() throws {
+        let container = try InMemoryContainer.make()
+        let context = ModelContext(container)
+
+        let sop = SOP(name: "Morning routine", type: .flow)
+        context.insert(sop)
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<SOP>())
+        XCTAssertEqual(fetched.first?.type, .flow)
+    }
 }
