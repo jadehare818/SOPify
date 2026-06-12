@@ -84,11 +84,7 @@ struct OnboardingView: View {
 
     private func importSelected() {
         for template in templates where selectedTemplateIds.contains(template.id) {
-            let sop = SOP(name: template.name, type: template.sopType)
-            sop.category = categories.first(where: { $0.name == template.category })
-            sop.steps = template.steps.enumerated().map { (i, text) in
-                Step(text: text, order: i)
-            }
+            let sop = TemplateImporter.importTemplate(template, categories: categories, context: context)
             context.insert(sop)
         }
         try? context.save()
