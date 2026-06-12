@@ -6,12 +6,14 @@ struct SOPEditView: View {
     @Environment(\.dismiss) private var dismiss
 
     let editing: SOP?
+    let isOneShot: Bool
 
     @State private var name: String = ""
     @State private var stepTexts: [String] = [""]
 
-    init(editing: SOP? = nil) {
+    init(editing: SOP? = nil, isOneShot: Bool = false) {
         self.editing = editing
+        self.isOneShot = editing?.isOneShot ?? isOneShot
         _name = State(initialValue: editing?.name ?? "")
         let texts = editing?.steps
             .sorted(by: { $0.order < $1.order })
@@ -23,7 +25,7 @@ struct SOPEditView: View {
         NavigationStack {
             Form {
                 Section("Name") {
-                    TextField("e.g. Pack for swim", text: $name)
+                    TextField(isOneShot ? "e.g. 明早出门准备" : "e.g. Pack for swim", text: $name)
                 }
 
                 Section("Steps") {
@@ -40,7 +42,7 @@ struct SOPEditView: View {
                     }
                 }
             }
-            .navigationTitle(editing == nil ? "New SOP" : "Edit SOP")
+            .navigationTitle(editing == nil ? (isOneShot ? "临时 SOP" : "New SOP") : "Edit SOP")
             #if !os(macOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
@@ -77,7 +79,7 @@ struct SOPEditView: View {
                 Step(text: text, order: i)
             }
         } else {
-            let sop = SOP(name: trimmedName)
+            let sop = SOP(name: trimmedName, isOneShot: isOneShot)
             sop.steps = nonEmptySteps.enumerated().map { (i, text) in
                 Step(text: text, order: i)
             }
@@ -90,6 +92,12 @@ struct SOPEditView: View {
 
 #Preview("New") {
     SOPEditView()
+        .modelContainer(for: [SOP.self, Step.self, ExecutionRecord.self, StepCompletion.self],
+                        inMemory: true)
+}
+
+#Preview("Temp") {
+    SOPEditView(isOneShot: true)
         .modelContainer(for: [SOP.self, Step.self, ExecutionRecord.self, StepCompletion.self],
                         inMemory: true)
 }

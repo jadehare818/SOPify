@@ -10,6 +10,7 @@ final class SOP {
     var id: UUID
     var name: String
     var typeRaw: String
+    var isOneShot: Bool
     var createdAt: Date
     var updatedAt: Date
 
@@ -21,10 +22,11 @@ final class SOP {
         set { typeRaw = newValue.rawValue }
     }
 
-    init(name: String, type: SOPType = .checklist) {
+    init(name: String, type: SOPType = .checklist, isOneShot: Bool = false) {
         self.id = UUID()
         self.name = name
         self.typeRaw = type.rawValue
+        self.isOneShot = isOneShot
         self.createdAt = .now
         self.updatedAt = .now
     }

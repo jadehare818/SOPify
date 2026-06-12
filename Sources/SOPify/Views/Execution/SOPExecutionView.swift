@@ -11,6 +11,7 @@ struct SOPExecutionView: View {
     @State private var completedStepIDs: Set<UUID> = []
     @State private var showingFeedback = false
     @State private var feedbackDraft = ""
+    @State private var showingOneShotPrompt = false
 
     private var orderedSteps: [Step] {
         sop.steps.sorted(by: { $0.order < $1.order })
@@ -80,6 +81,12 @@ struct SOPExecutionView: View {
                 }
             }
         }
+        .alert("做完啦", isPresented: $showingOneShotPrompt) {
+            Button("删了", role: .destructive) { deleteOneShot() }
+            Button("留着") { dismiss() }
+        } message: {
+            Text("这条临时 SOP 还留着吗？")
+        }
     }
 
     private func ensureRecord() {
@@ -126,6 +133,16 @@ struct SOPExecutionView: View {
 
     private func finish() {
         record?.finishedAt = .now
+        try? context.save()
+        if sop.isOneShot {
+            showingOneShotPrompt = true
+        } else {
+            dismiss()
+        }
+    }
+
+    private func deleteOneShot() {
+        context.delete(sop)
         try? context.save()
         dismiss()
     }

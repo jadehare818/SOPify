@@ -41,4 +41,21 @@ final class SOPModelTests: XCTestCase {
         let sop = SOP(name: "X")
         XCTAssertEqual(sop.type, SOPType.checklist)
     }
+
+    func testIsOneShotDefaultsToFalse() {
+        let sop = SOP(name: "Regular")
+        XCTAssertFalse(sop.isOneShot)
+    }
+
+    func testIsOneShotCanBeSetToTrue() throws {
+        let container = try InMemoryContainer.make()
+        let context = ModelContext(container)
+
+        let sop = SOP(name: "Temp task", isOneShot: true)
+        context.insert(sop)
+        try context.save()
+
+        let fetched = try context.fetch(FetchDescriptor<SOP>())
+        XCTAssertEqual(fetched.first?.isOneShot, true)
+    }
 }
