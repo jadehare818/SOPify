@@ -45,7 +45,8 @@ struct BranchOptionExport: Codable {
     let id: UUID
     let label: String
     let order: Int
-    let targetSOP: SOPExport
+    let targetSOP: SOPExport?
+    let actionText: String?
 }
 
 struct TriggerExport: Codable {

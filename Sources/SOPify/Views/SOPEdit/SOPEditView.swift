@@ -10,7 +10,6 @@ struct SOPEditView: View {
     let isOneShot: Bool
 
     @State private var name: String = ""
-    @State private var stepTexts: [String] = [""]
     @State private var selectedCategory: Category?
     @State private var selectedType: SOPType = .checklist
     @State private var nestedEditTarget: SOP?
@@ -19,18 +18,37 @@ struct SOPEditView: View {
     @State private var branchQuestionDraft = ""
     @State private var editingBranchStep: Step?
     @State private var showingTriggerSheet = false
+    @State private var showingAddMenu = false
+
+    // Unified step list for new SOPs (before first save)
+    @State private var draftSteps: [DraftStep] = [.text("")]
+
+    struct DraftStep: Identifiable {
+        let id = UUID()
+        var kind: DraftStepKind
+        enum DraftStepKind {
+            case text(String)
+        }
+        static func text(_ s: String) -> DraftStep { DraftStep(kind: .text(s)) }
+        var text: String {
+            get { if case .text(let s) = kind { return s } else { return "" } }
+            set { kind = .text(newValue) }
+        }
+    }
 
     init(editing: SOP? = nil, isOneShot: Bool = false) {
         self.editing = editing
         self.isOneShot = editing?.isOneShot ?? isOneShot
         _name = State(initialValue: editing?.name ?? "")
-        let texts = editing?.steps
-            .sorted(by: { $0.order < $1.order })
-            .filter { !$0.isNested && !$0.isBranch }
-            .map(\.text)
-        _stepTexts = State(initialValue: texts?.isEmpty == false ? texts! : [""])
         _selectedCategory = State(initialValue: editing?.category)
         _selectedType = State(initialValue: editing?.type ?? .checklist)
+        if editing == nil {
+            _draftSteps = State(initialValue: [.text("")])
+        }
+    }
+
+    private var orderedSteps: [Step] {
+        editing?.steps.sorted(by: { $0.order < $1.order }) ?? []
     }
 
     var body: some View {
@@ -64,14 +82,10 @@ struct SOPEditView: View {
 
                 if let existing = editing, existing.type == .checklist {
                     Section {
-                        Button {
-                            selectedType = .flow
-                        } label: {
+                        Button { selectedType = .flow } label: {
                             Label("Upgrade to Flow", systemImage: "arrow.up.circle")
                         }
-                        Button {
-                            selectedType = .branching
-                        } label: {
+                        Button { selectedType = .branching } label: {
                             Label("Upgrade to Branching", systemImage: "arrow.triangle.branch")
                         }
                     }
@@ -79,88 +93,61 @@ struct SOPEditView: View {
 
                 if let existing = editing, existing.type == .flow {
                     Section {
-                        Button {
-                            selectedType = .branching
-                        } label: {
+                        Button { selectedType = .branching } label: {
                             Label("Upgrade to Branching", systemImage: "arrow.triangle.branch")
                         }
                     }
                 }
 
-                Section("Steps") {
-                    ForEach(stepTexts.indices, id: \.self) { index in
-                        StepEditRow(text: $stepTexts[index]) {
-                            stepTexts.remove(at: index)
-                            if stepTexts.isEmpty { stepTexts = [""] }
-                        }
-                    }
-                    Button {
-                        stepTexts.append("")
-                    } label: {
-                        Label("Add Step", systemImage: "plus.circle")
-                    }
-                }
-
-                if let existingSOP = editing {
-                    Section("Sub-SOPs") {
-                        let nestedSteps = existingSOP.steps
-                            .filter { $0.isNested }
-                            .sorted(by: { $0.order < $1.order })
-                        ForEach(nestedSteps) { step in
-                            Button {
+                // MARK: - Steps section (unified)
+                if editing != nil {
+                    Section("Steps") {
+                        ForEach(orderedSteps) { step in
+                            EditStepRow(step: step, onEditNested: {
                                 if let childId = step.nestedSOPId {
                                     nestedEditTarget = fetchChild(id: childId)
                                 }
-                            } label: {
-                                HStack {
-                                    Label(step.text, systemImage: "folder.fill")
-                                        .foregroundStyle(.primary)
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
+                            }, onEditBranch: {
+                                editingBranchStep = step
+                            })
                         }
                         .onDelete { indexSet in
-                            deleteNestedSteps(nestedSteps: nestedSteps, at: indexSet)
+                            deleteSteps(at: indexSet)
                         }
-                        Button {
-                            showingSubSOPSheet = true
+                        .onMove { source, destination in
+                            moveSteps(from: source, to: destination)
+                        }
+
+                        Menu {
+                            Button { addTextStep() } label: {
+                                Label("Text Step", systemImage: "text.badge.plus")
+                            }
+                            Button { showingSubSOPSheet = true } label: {
+                                Label("Sub-SOP", systemImage: "folder.badge.plus")
+                            }
+                            if selectedType == .branching {
+                                Button {
+                                    branchQuestionDraft = ""
+                                    showingBranchAlert = true
+                                } label: {
+                                    Label("Branch Point", systemImage: "arrow.triangle.branch")
+                                }
+                            }
                         } label: {
-                            Label("Add Sub-SOP", systemImage: "folder.badge.plus")
+                            Label("Add", systemImage: "plus.circle")
                         }
                     }
-                }
-
-                if let existingSOP = editing, selectedType == .branching {
-                    Section("Branch Points") {
-                        let branchSteps = existingSOP.steps
-                            .filter { $0.isBranch }
-                            .sorted(by: { $0.order < $1.order })
-                        ForEach(branchSteps) { step in
-                            Button {
-                                editingBranchStep = step
-                            } label: {
-                                HStack {
-                                    Label(step.branchQuestion ?? step.text, systemImage: "arrow.triangle.branch")
-                                        .foregroundStyle(.primary)
-                                    Spacer()
-                                    Text("\(step.branchOptions.count) options")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    Image(systemName: "chevron.right")
-                                        .foregroundStyle(.secondary)
-                                }
+                } else {
+                    // New SOP — simple text step editor
+                    Section("Steps") {
+                        ForEach($draftSteps) { $step in
+                            StepEditRow(text: $step.text) {
+                                draftSteps.removeAll { $0.id == step.id }
+                                if draftSteps.isEmpty { draftSteps = [.text("")] }
                             }
                         }
-                        .onDelete { indexSet in
-                            deleteBranchSteps(branchSteps: branchSteps, at: indexSet)
-                        }
-                        Button {
-                            branchQuestionDraft = ""
-                            showingBranchAlert = true
-                        } label: {
-                            Label("Add Branch Point", systemImage: "plus.circle")
+                        Button { draftSteps.append(.text("")) } label: {
+                            Label("Add Step", systemImage: "plus.circle")
                         }
                     }
                 }
@@ -168,9 +155,7 @@ struct SOPEditView: View {
                 if let existingSOP = editing, !isOneShot {
                     Section("Triggers") {
                         let triggerCount = existingSOP.triggers.count
-                        Button {
-                            showingTriggerSheet = true
-                        } label: {
+                        Button { showingTriggerSheet = true } label: {
                             HStack {
                                 Label("Manage Triggers", systemImage: "bell.badge")
                                 Spacer()
@@ -210,13 +195,13 @@ struct SOPEditView: View {
                 }
             }
             .alert("New Branch Point", isPresented: $showingBranchAlert) {
-                TextField("Question (e.g. Which route?)", text: $branchQuestionDraft)
+                TextField("e.g. 现在几点？", text: $branchQuestionDraft)
                 Button("Create") {
                     addBranchPoint(question: branchQuestionDraft)
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Enter the decision question.")
+                Text("Enter the condition or question.")
             }
             .sheet(item: $editingBranchStep) { step in
                 BranchPointEditView(step: step)
@@ -229,105 +214,55 @@ struct SOPEditView: View {
         }
     }
 
+    // MARK: - Validation
+
     private var canSave: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty &&
-        stepTexts.contains(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty })
+        let hasName = !name.trimmingCharacters(in: .whitespaces).isEmpty
+        if editing != nil {
+            return hasName && !orderedSteps.isEmpty
+        } else {
+            let hasStep = draftSteps.contains(where: { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty })
+            return hasName && hasStep
+        }
     }
+
+    // MARK: - Save
 
     private func save() {
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
-        let nonEmptySteps = stepTexts
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
 
         if let existing = editing {
             existing.name = trimmedName
             existing.updatedAt = .now
             existing.category = selectedCategory
             existing.typeRaw = selectedType.rawValue
-
-            // Preserve nested and branch steps, only delete plain text steps
-            let nestedSteps = existing.steps.filter { $0.isNested }
-            let branchSteps = existing.steps.filter { $0.isBranch }
-            let plainSteps = existing.steps.filter { !$0.isNested && !$0.isBranch }
-            for step in plainSteps {
-                context.delete(step)
-            }
-
-            // Recreate plain text steps
-            let newPlainSteps = nonEmptySteps.enumerated().map { (i, text) in
-                Step(text: text, order: i)
-            }
-
-            // Re-order nested steps after plain steps
-            var baseOrder = newPlainSteps.count
-            for (i, nested) in nestedSteps.enumerated() {
-                nested.order = baseOrder + i
-            }
-
-            // Re-order branch steps after nested steps
-            baseOrder += nestedSteps.count
-            for (i, branch) in branchSteps.enumerated() {
-                branch.order = baseOrder + i
-            }
-
-            existing.steps = newPlainSteps + nestedSteps + branchSteps
+            // Steps are already managed in-place via add/delete/move
+            try? context.save()
         } else {
+            let nonEmptySteps = draftSteps
+                .map { $0.text.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+
             let sop = SOP(name: trimmedName, type: selectedType, isOneShot: isOneShot)
             sop.category = selectedCategory
             sop.steps = nonEmptySteps.enumerated().map { (i, text) in
                 Step(text: text, order: i)
             }
             context.insert(sop)
+            try? context.save()
         }
-        try? context.save()
         dismiss()
     }
 
-    private func addNestedSOP(name: String) {
+    // MARK: - Step management (editing mode)
+
+    private func addTextStep() {
         guard let parent = editing else { return }
-        let trimmed = name.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
-
-        let childSOP = SOP(name: trimmed, type: .checklist)
-        let stepOrder = parent.steps.count
-        let step = Step(text: trimmed, order: stepOrder, nestedSOPId: childSOP.id)
-        childSOP.parentStepId = step.id
-
-        context.insert(childSOP)
+        let order = parent.steps.count
+        let step = Step(text: "", order: order)
         parent.steps.append(step)
         parent.updatedAt = .now
         try? context.save()
-
-        nestedEditTarget = childSOP
-    }
-
-    private func linkExistingSOP(_ existingSOP: SOP) {
-        guard let parent = editing else { return }
-        let stepOrder = parent.steps.count
-        let step = Step(text: existingSOP.name, order: stepOrder, nestedSOPId: existingSOP.id)
-        parent.steps.append(step)
-        parent.updatedAt = .now
-        try? context.save()
-    }
-
-    private func deleteNestedSteps(nestedSteps: [Step], at indexSet: IndexSet) {
-        guard let parent = editing else { return }
-        for index in indexSet {
-            let step = nestedSteps[index]
-            // Delete the child SOP if it exists
-            if let childId = step.nestedSOPId, let child = fetchChild(id: childId) {
-                context.delete(child)
-            }
-            parent.steps.removeAll { $0.id == step.id }
-            context.delete(step)
-        }
-        try? context.save()
-    }
-
-    private func fetchChild(id: UUID) -> SOP? {
-        let descriptor = FetchDescriptor<SOP>(predicate: #Predicate { $0.id == id })
-        return try? context.fetch(descriptor).first
     }
 
     private func addBranchPoint(question: String) {
@@ -344,20 +279,101 @@ struct SOPEditView: View {
         editingBranchStep = step
     }
 
-    private func deleteBranchSteps(branchSteps: [Step], at indexSet: IndexSet) {
+    private func deleteSteps(at indexSet: IndexSet) {
         guard let parent = editing else { return }
+        let steps = orderedSteps
         for index in indexSet {
-            let step = branchSteps[index]
-            for option in step.branchOptions {
-                if let child = fetchChild(id: option.targetSOPId) {
-                    context.delete(child)
+            let step = steps[index]
+            if let childId = step.nestedSOPId, let child = fetchChild(id: childId) {
+                context.delete(child)
+            }
+            if step.isBranch {
+                for option in step.branchOptions {
+                    if let sopId = option.targetSOPId, let child = fetchChild(id: sopId) {
+                        context.delete(child)
+                    }
+                    context.delete(option)
                 }
-                context.delete(option)
             }
             parent.steps.removeAll { $0.id == step.id }
             context.delete(step)
         }
+        reorderSteps(parent)
         try? context.save()
+    }
+
+    private func moveSteps(from source: IndexSet, to destination: Int) {
+        guard let parent = editing else { return }
+        var steps = orderedSteps
+        steps.move(fromOffsets: source, toOffset: destination)
+        for (i, step) in steps.enumerated() {
+            step.order = i
+        }
+        parent.updatedAt = .now
+        try? context.save()
+    }
+
+    private func reorderSteps(_ parent: SOP) {
+        let sorted = parent.steps.sorted(by: { $0.order < $1.order })
+        for (i, step) in sorted.enumerated() {
+            step.order = i
+        }
+    }
+
+    private func fetchChild(id: UUID) -> SOP? {
+        let descriptor = FetchDescriptor<SOP>(predicate: #Predicate { $0.id == id })
+        return try? context.fetch(descriptor).first
+    }
+}
+
+// MARK: - Unified step row in edit mode
+
+private struct EditStepRow: View {
+    @Environment(\.modelContext) private var context
+    let step: Step
+    let onEditNested: () -> Void
+    let onEditBranch: () -> Void
+
+    @State private var text: String
+
+    init(step: Step, onEditNested: @escaping () -> Void, onEditBranch: @escaping () -> Void) {
+        self.step = step
+        self.onEditNested = onEditNested
+        self.onEditBranch = onEditBranch
+        _text = State(initialValue: step.text)
+    }
+
+    var body: some View {
+        if step.isNested {
+            Button(action: onEditNested) {
+                HStack {
+                    Label(step.text, systemImage: "folder.fill")
+                        .foregroundStyle(.orange)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } else if step.isBranch {
+            Button(action: onEditBranch) {
+                HStack {
+                    Label(step.branchQuestion ?? step.text, systemImage: "arrow.triangle.branch")
+                        .foregroundStyle(.purple)
+                    Spacer()
+                    Text("\(step.branchOptions.count) options")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } else {
+            TextField("Step", text: $text)
+                .onChange(of: text) { _, newValue in
+                    step.text = newValue
+                    try? context.save()
+                }
+        }
     }
 }
 
@@ -397,14 +413,10 @@ struct SubSOPPickerSheet: View {
                 switch mode {
                 case .choose:
                     List {
-                        Button {
-                            mode = .createNew
-                        } label: {
+                        Button { mode = .createNew } label: {
                             Label("Create New", systemImage: "plus.circle")
                         }
-                        Button {
-                            mode = .linkExisting
-                        } label: {
+                        Button { mode = .linkExisting } label: {
                             Label("Link Existing SOP", systemImage: "link")
                         }
                     }
@@ -416,9 +428,7 @@ struct SubSOPPickerSheet: View {
                     }
                 case .linkExisting:
                     List(linkableSOPs) { sop in
-                        LinkableSOPRow(sop: sop) {
-                            linkSOP(sop)
-                        }
+                        LinkableSOPRow(sop: sop) { linkSOP(sop) }
                     }
                     .overlay {
                         if linkableSOPs.isEmpty {
@@ -440,17 +450,13 @@ struct SubSOPPickerSheet: View {
                 }
                 if mode == .createNew {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Create") {
-                            createNew()
-                        }
-                        .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
+                        Button("Create") { createNew() }
+                            .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 }
                 if mode != .choose {
                     ToolbarItem(placement: .navigation) {
-                        Button {
-                            mode = .choose
-                        } label: {
+                        Button { mode = .choose } label: {
                             Image(systemName: "chevron.left")
                         }
                     }
@@ -508,7 +514,7 @@ struct SubSOPPickerSheet: View {
         visited.insert(sop.id)
 
         let nestedIds = sop.steps.compactMap(\.nestedSOPId)
-        let branchTargetIds = sop.steps.flatMap { $0.branchOptions.map(\.targetSOPId) }
+        let branchTargetIds = sop.steps.flatMap { $0.branchOptions.compactMap(\.targetSOPId) }
         let allChildIds = nestedIds + branchTargetIds
 
         for childId in allChildIds {
@@ -547,12 +553,12 @@ private struct LinkableSOPRow: View {
 
 #Preview("New") {
     SOPEditView()
-        .modelContainer(for: [SOP.self, Step.self, ExecutionRecord.self, StepCompletion.self, Category.self],
+        .modelContainer(for: [SOP.self, Step.self, ExecutionRecord.self, StepCompletion.self, Category.self, BranchOption.self, Trigger.self],
                         inMemory: true)
 }
 
 #Preview("Temp") {
     SOPEditView(isOneShot: true)
-        .modelContainer(for: [SOP.self, Step.self, ExecutionRecord.self, StepCompletion.self, Category.self],
+        .modelContainer(for: [SOP.self, Step.self, ExecutionRecord.self, StepCompletion.self, Category.self, BranchOption.self, Trigger.self],
                         inMemory: true)
 }

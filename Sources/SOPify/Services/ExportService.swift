@@ -74,15 +74,13 @@ enum ExportService {
 
         let branchExports: [BranchPointExport] = branchSteps.map { step in
             let options = step.branchOptions.sorted(by: { $0.order < $1.order }).map { option in
-                let targetSOP: SOPExport = {
-                    let targetId = option.targetSOPId
+                let targetSOP: SOPExport? = {
+                    guard let targetId = option.targetSOPId else { return nil }
                     let descriptor = FetchDescriptor<SOP>(predicate: #Predicate { $0.id == targetId })
-                    guard let child = try? context.fetch(descriptor).first else {
-                        return SOPExport(id: targetId, name: option.label, type: "checklist", isOneShot: false, categoryId: nil, createdAt: .now, steps: [], branchPoints: [], triggers: [])
-                    }
+                    guard let child = try? context.fetch(descriptor).first else { return nil }
                     return exportSOP(child, context: context)
                 }()
-                return BranchOptionExport(id: option.id, label: option.label, order: option.order, targetSOP: targetSOP)
+                return BranchOptionExport(id: option.id, label: option.label, order: option.order, targetSOP: targetSOP, actionText: option.actionText)
             }
             return BranchPointExport(id: step.id, question: step.branchQuestion ?? step.text, order: step.order, rejoinAfter: step.rejoinAfter, options: options)
         }

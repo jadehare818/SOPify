@@ -100,11 +100,17 @@ enum ImportService {
         for bpExport in export.branchPoints {
             let step = Step(text: bpExport.question, order: bpExport.order, branchQuestion: bpExport.question, rejoinAfter: bpExport.rejoinAfter)
             for optExport in bpExport.options {
-                let childSOP = createChildSOP(from: optExport.targetSOP, categoryMap: categoryMap, context: context)
-                childSOP.parentStepId = step.id
-                let option = BranchOption(label: optExport.label, order: optExport.order, targetSOPId: childSOP.id)
-                option.step = step
-                context.insert(option)
+                if let targetSOPExport = optExport.targetSOP {
+                    let childSOP = createChildSOP(from: targetSOPExport, categoryMap: categoryMap, context: context)
+                    childSOP.parentStepId = step.id
+                    let option = BranchOption(label: optExport.label, order: optExport.order, targetSOPId: childSOP.id)
+                    option.step = step
+                    context.insert(option)
+                } else {
+                    let option = BranchOption(label: optExport.label, order: optExport.order, actionText: optExport.actionText ?? optExport.label)
+                    option.step = step
+                    context.insert(option)
+                }
             }
             steps.append(step)
         }

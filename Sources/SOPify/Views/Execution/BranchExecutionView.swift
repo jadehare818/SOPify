@@ -134,7 +134,14 @@ struct BranchExecutionView: View {
             if let data = activeBranchOptions {
                 BranchChoiceSheet(step: data.step, options: data.options) { option in
                     activeBranchOptions = nil
-                    activeChildSOP = fetchChild(id: option.targetSOPId)
+                    if let sopId = option.targetSOPId {
+                        activeChildSOP = fetchChild(id: sopId)
+                    } else {
+                        if let step = orderedSteps.first(where: { $0.id == data.step.id }),
+                           !completedStepIDs.contains(step.id) {
+                            complete(step)
+                        }
+                    }
                 }
             }
         }
@@ -311,11 +318,19 @@ struct BranchChoiceSheet: View {
                             dismiss()
                         } label: {
                             HStack {
-                                Image(systemName: "arrow.right.circle.fill")
-                                Text(option.label)
-                                    .font(.headline)
+                                Image(systemName: option.isSimpleAction ? "text.bubble.fill" : "arrow.right.circle.fill")
+                                    .foregroundStyle(option.isSimpleAction ? .orange : .purple)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(option.label)
+                                        .font(.headline)
+                                    if option.isSimpleAction, let action = option.actionText, action != option.label {
+                                        Text(action)
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
                                 Spacer()
-                                Image(systemName: "chevron.right")
+                                Image(systemName: option.isSimpleAction ? "checkmark" : "chevron.right")
                                     .foregroundStyle(.secondary)
                             }
                             .padding()
@@ -452,7 +467,14 @@ struct NestedBranchExecution: View {
             if let data = activeBranchOptions {
                 BranchChoiceSheet(step: data.step, options: data.options) { option in
                     activeBranchOptions = nil
-                    activeChildSOP = fetchChild(id: option.targetSOPId)
+                    if let sopId = option.targetSOPId {
+                        activeChildSOP = fetchChild(id: sopId)
+                    } else {
+                        if let step = orderedSteps.first(where: { $0.id == data.step.id }),
+                           !completedStepIDs.contains(step.id) {
+                            completedStepIDs.insert(step.id)
+                        }
+                    }
                 }
             }
         }

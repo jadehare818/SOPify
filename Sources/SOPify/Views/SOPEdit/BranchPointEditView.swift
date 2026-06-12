@@ -9,8 +9,7 @@ struct BranchPointEditView: View {
 
     @State private var question: String
     @State private var rejoinAfter: Bool
-    @State private var showingNewOptionAlert = false
-    @State private var optionLabelDraft = ""
+    @State private var showingAddOption = false
     @State private var editingChildSOP: SOP?
 
     init(step: Step) {
@@ -26,8 +25,8 @@ struct BranchPointEditView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Question") {
-                    TextField("e.g. Which route to take?", text: $question)
+                Section("Condition / Question") {
+                    TextField("e.g. 现在几点？", text: $question)
                 }
 
                 Section {
@@ -38,17 +37,9 @@ struct BranchPointEditView: View {
 
                 Section("Options") {
                     ForEach(orderedOptions) { option in
-                        Button {
-                            editingChildSOP = fetchChild(id: option.targetSOPId)
-                        } label: {
-                            HStack {
-                                Image(systemName: "arrow.right.circle.fill")
-                                    .foregroundStyle(.purple)
-                                Text(option.label)
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .foregroundStyle(.secondary)
+                        BranchOptionRow(option: option) {
+                            if let sopId = option.targetSOPId {
+                                editingChildSOP = fetchChild(id: sopId)
                             }
                         }
                     }
@@ -57,8 +48,7 @@ struct BranchPointEditView: View {
                     }
 
                     Button {
-                        optionLabelDraft = ""
-                        showingNewOptionAlert = true
+                        showingAddOption = true
                     } label: {
                         Label("Add Option", systemImage: "plus.circle")
                     }
@@ -73,14 +63,8 @@ struct BranchPointEditView: View {
                     Button("Done") { save() }
                 }
             }
-            .alert("New Option", isPresented: $showingNewOptionAlert) {
-                TextField("Option label", text: $optionLabelDraft)
-                Button("Create") {
-                    addOption(label: optionLabelDraft)
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Enter a label for this branch option.")
+            .sheet(isPresented: $showingAddOption) {
+                AddBranchOptionSheet(step: step)
             }
             .sheet(item: $editingChildSOP) { childSOP in
                 SOPEditView(editing: childSOP)
@@ -99,28 +83,11 @@ struct BranchPointEditView: View {
         dismiss()
     }
 
-    private func addOption(label: String) {
-        let trimmed = label.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
-
-        let childSOP = SOP(name: trimmed, type: .checklist)
-        childSOP.parentStepId = step.id
-
-        let option = BranchOption(label: trimmed, order: step.branchOptions.count, targetSOPId: childSOP.id)
-        option.step = step
-
-        context.insert(childSOP)
-        context.insert(option)
-        try? context.save()
-
-        editingChildSOP = childSOP
-    }
-
     private func deleteOptions(at indexSet: IndexSet) {
         let sorted = orderedOptions
         for index in indexSet {
             let option = sorted[index]
-            if let child = fetchChild(id: option.targetSOPId) {
+            if let sopId = option.targetSOPId, let child = fetchChild(id: sopId) {
                 context.delete(child)
             }
             context.delete(option)
@@ -131,5 +98,154 @@ struct BranchPointEditView: View {
     private func fetchChild(id: UUID) -> SOP? {
         let descriptor = FetchDescriptor<SOP>(predicate: #Predicate { $0.id == id })
         return try? context.fetch(descriptor).first
+    }
+}
+
+// MARK: - Option row
+
+private struct BranchOptionRow: View {
+    let option: BranchOption
+    let onEditSOP: () -> Void
+
+    var body: some View {
+        if option.isSimpleAction {
+            HStack {
+                Image(systemName: "text.bubble")
+                    .foregroundStyle(.orange)
+                VStack(alignment: .leading) {
+                    Text(option.label).foregroundStyle(.primary)
+                    if let action = option.actionText, !action.isEmpty {
+                        Text(action)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+            }
+        } else {
+            Button(action: onEditSOP) {
+                HStack {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .foregroundStyle(.purple)
+                    Text(option.label)
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Add option sheet
+
+struct AddBranchOptionSheet: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+
+    let step: Step
+
+    @State private var mode: OptionMode = .choose
+    @State private var label = ""
+    @State private var actionText = ""
+
+    enum OptionMode {
+        case choose, textAction, subSOP
+    }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                switch mode {
+                case .choose:
+                    List {
+                        Button {
+                            mode = .textAction
+                        } label: {
+                            Label("Text Action", systemImage: "text.bubble")
+                                .foregroundStyle(.primary)
+                        }
+                        Button {
+                            mode = .subSOP
+                        } label: {
+                            Label("Sub-SOP", systemImage: "folder.fill")
+                                .foregroundStyle(.primary)
+                        }
+                    }
+                case .textAction:
+                    Form {
+                        Section("Option Label") {
+                            TextField("e.g. 早上九点", text: $label)
+                        }
+                        Section("Action") {
+                            TextField("e.g. 出门上班", text: $actionText)
+                        }
+                    }
+                case .subSOP:
+                    Form {
+                        Section("Option Label") {
+                            TextField("e.g. Route A", text: $label)
+                        }
+                    }
+                }
+            }
+            .navigationTitle(mode == .choose ? "Add Option" : (mode == .textAction ? "Text Action" : "Sub-SOP"))
+            #if !os(macOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                if mode != .choose {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Add") { addOption() }
+                            .disabled(label.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                    ToolbarItem(placement: .navigation) {
+                        Button { mode = .choose } label: {
+                            Image(systemName: "chevron.left")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func addOption() {
+        let trimmedLabel = label.trimmingCharacters(in: .whitespaces)
+        guard !trimmedLabel.isEmpty else { return }
+
+        switch mode {
+        case .textAction:
+            let trimmedAction = actionText.trimmingCharacters(in: .whitespaces)
+            let option = BranchOption(
+                label: trimmedLabel,
+                order: step.branchOptions.count,
+                actionText: trimmedAction.isEmpty ? trimmedLabel : trimmedAction
+            )
+            option.step = step
+            context.insert(option)
+
+        case .subSOP:
+            let childSOP = SOP(name: trimmedLabel, type: .checklist)
+            childSOP.parentStepId = step.id
+            context.insert(childSOP)
+
+            let option = BranchOption(
+                label: trimmedLabel,
+                order: step.branchOptions.count,
+                targetSOPId: childSOP.id
+            )
+            option.step = step
+            context.insert(option)
+
+        case .choose:
+            return
+        }
+
+        try? context.save()
+        dismiss()
     }
 }
