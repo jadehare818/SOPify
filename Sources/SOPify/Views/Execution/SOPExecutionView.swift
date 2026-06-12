@@ -9,6 +9,8 @@ struct SOPExecutionView: View {
 
     @State private var record: ExecutionRecord?
     @State private var completedStepIDs: Set<UUID> = []
+    @State private var showingFeedback = false
+    @State private var feedbackDraft = ""
 
     private var orderedSteps: [Step] {
         sop.steps.sorted(by: { $0.order < $1.order })
@@ -53,6 +55,31 @@ struct SOPExecutionView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .onAppear { ensureRecord() }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                NavigationLink {
+                    SOPHistoryView(sop: sop)
+                } label: {
+                    Image(systemName: "clock")
+                }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    feedbackDraft = ""
+                    showingFeedback = true
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                }
+                .disabled(currentStepID == nil)
+            }
+        }
+        .sheet(isPresented: $showingFeedback) {
+            if let id = currentStepID, let step = orderedSteps.first(where: { $0.id == id }) {
+                FeedbackSheet(stepText: step.text, draft: $feedbackDraft) { text in
+                    saveFeedback(text, forStepID: id)
+                }
+            }
+        }
     }
 
     private func ensureRecord() {
@@ -76,6 +103,21 @@ struct SOPExecutionView: View {
         } else {
             completedStepIDs.insert(step.id)
             let completion = StepCompletion(stepId: step.id, completedAt: .now)
+            completion.record = record
+            context.insert(completion)
+        }
+        try? context.save()
+    }
+
+    private func saveFeedback(_ text: String, forStepID stepID: UUID) {
+        guard let record else { return }
+        if let latest = record.completions
+            .filter({ $0.stepId == stepID })
+            .sorted(by: { $0.completedAt > $1.completedAt })
+            .first {
+            latest.feedbackText = text
+        } else {
+            let completion = StepCompletion(stepId: stepID, completedAt: .now, feedbackText: text)
             completion.record = record
             context.insert(completion)
         }
