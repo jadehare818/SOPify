@@ -161,6 +161,7 @@ struct SOPExecutionView: View {
     private func finish() {
         record?.finishedAt = .now
         try? context.save()
+        ChainedTriggerHelper.fireChainedTriggers(for: sop.id, context: context)
         if sop.isOneShot {
             showingOneShotPrompt = true
         } else {

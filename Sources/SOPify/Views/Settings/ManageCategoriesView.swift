@@ -7,24 +7,37 @@ struct ManageCategoriesView: View {
     @State private var showingAdd = false
     @State private var newName = ""
     @State private var newIcon = "folder.fill"
+    @State private var notificationsPaused = NotificationService.shared.isPaused
 
     var body: some View {
         List {
-            ForEach(categories) { cat in
-                HStack {
-                    Image(systemName: cat.icon)
-                        .foregroundStyle(Color.accentColor)
-                        .frame(width: 30)
-                    Text(cat.name)
-                    Spacer()
-                    Text("\(cat.sops.count)")
-                        .foregroundStyle(.secondary)
+            Section("Categories") {
+                ForEach(categories) { cat in
+                    HStack {
+                        Image(systemName: cat.icon)
+                            .foregroundStyle(Color.accentColor)
+                            .frame(width: 30)
+                        Text(cat.name)
+                        Spacer()
+                        Text("\(cat.sops.count)")
+                            .foregroundStyle(.secondary)
+                    }
                 }
+                .onDelete(perform: delete)
+                .onMove(perform: move)
             }
-            .onDelete(perform: delete)
-            .onMove(perform: move)
+
+            Section("Notifications") {
+                Toggle("Pause all notifications", isOn: $notificationsPaused)
+                    .onChange(of: notificationsPaused) { _, newValue in
+                        NotificationService.shared.isPaused = newValue
+                        if newValue {
+                            NotificationService.shared.cancelAll()
+                        }
+                    }
+            }
         }
-        .navigationTitle("Manage Categories")
+        .navigationTitle("Settings")
         #if !os(macOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif

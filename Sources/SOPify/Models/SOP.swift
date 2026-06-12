@@ -20,6 +20,9 @@ final class SOP {
     @Relationship(deleteRule: .cascade, inverse: \Step.sop)
     var steps: [Step] = []
 
+    @Relationship(deleteRule: .cascade, inverse: \Trigger.sop)
+    var triggers: [Trigger] = []
+
     var category: Category?
 
     var type: SOPType {

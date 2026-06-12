@@ -19,6 +19,7 @@ struct SOPEditView: View {
     @State private var showingBranchAlert = false
     @State private var branchQuestionDraft = ""
     @State private var editingBranchStep: Step?
+    @State private var showingTriggerSheet = false
 
     init(editing: SOP? = nil, isOneShot: Bool = false) {
         self.editing = editing
@@ -165,6 +166,27 @@ struct SOPEditView: View {
                         }
                     }
                 }
+
+                if let existingSOP = editing, !isOneShot {
+                    Section("Triggers") {
+                        let triggerCount = existingSOP.triggers.count
+                        Button {
+                            showingTriggerSheet = true
+                        } label: {
+                            HStack {
+                                Label("Manage Triggers", systemImage: "bell.badge")
+                                Spacer()
+                                if triggerCount > 0 {
+                                    Text("\(triggerCount)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
             }
             .navigationTitle(editing == nil ? (isOneShot ? "临时 SOP" : "New SOP") : "Edit SOP")
             #if !os(macOS)
@@ -202,6 +224,11 @@ struct SOPEditView: View {
             }
             .sheet(item: $editingBranchStep) { step in
                 BranchPointEditView(step: step)
+            }
+            .sheet(isPresented: $showingTriggerSheet) {
+                if let existingSOP = editing {
+                    TriggerEditSheet(sop: existingSOP)
+                }
             }
         }
     }

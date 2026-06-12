@@ -3,11 +3,13 @@ import SwiftData
 
 struct HomeView: View {
     @Environment(\.modelContext) private var context
+    @Environment(DeeplinkRouter.self) private var deeplinkRouter
     @Query(sort: \Category.order) private var categories: [Category]
     @Query(sort: \SOP.createdAt, order: .reverse) private var allSOPs: [SOP]
     @Query(sort: \ExecutionRecord.startedAt, order: .reverse) private var recentRecords: [ExecutionRecord]
     @State private var showingNewSheet = false
     @State private var showingNewTempSheet = false
+    @State private var showingTemplates = false
     @State private var editTarget: SOP?
     @State private var searchText = ""
     @State private var navigationPath = NavigationPath()
@@ -143,6 +145,9 @@ struct HomeView: View {
                         Button { showingNewTempSheet = true } label: {
                             Label("临时 SOP", systemImage: "bolt")
                         }
+                        Button { showingTemplates = true } label: {
+                            Label("From Template", systemImage: "doc.on.doc")
+                        }
                     } label: {
                         Image(systemName: "plus")
                     }
@@ -156,6 +161,9 @@ struct HomeView: View {
             }
             .sheet(item: $editTarget) { sop in
                 SOPEditView(editing: sop)
+            }
+            .sheet(isPresented: $showingTemplates) {
+                TemplateBrowserView()
             }
             .navigationDestination(for: SOP.self) { sop in
                 switch sop.type {
@@ -173,6 +181,13 @@ struct HomeView: View {
             .navigationDestination(for: UncategorizedMarker.self) { _ in
                 CategoryDetailView(category: nil, title: "Uncategorized")
             }
+            .onChange(of: deeplinkRouter.pendingSOPId) { _, newId in
+                guard let sopId = newId,
+                      let sop = allSOPs.first(where: { $0.id == sopId }) else { return }
+                deeplinkRouter.pendingSOPId = nil
+                navigationPath = NavigationPath()
+                navigationPath.append(sop)
+            }
         }
     }
 }
@@ -181,6 +196,7 @@ struct UncategorizedMarker: Hashable {}
 
 #Preview {
     HomeView()
-        .modelContainer(for: [SOP.self, Step.self, ExecutionRecord.self, StepCompletion.self, Category.self],
+        .environment(DeeplinkRouter())
+        .modelContainer(for: [SOP.self, Step.self, ExecutionRecord.self, StepCompletion.self, Category.self, BranchOption.self, Trigger.self],
                         inMemory: true)
 }
