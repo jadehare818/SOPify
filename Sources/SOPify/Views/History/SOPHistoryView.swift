@@ -4,23 +4,21 @@ import SwiftData
 struct SOPHistoryView: View {
     let sop: SOP
 
-    @Query private var allRecords: [ExecutionRecord]
+    @Query(sort: \ExecutionRecord.startedAt, order: .reverse)
+    private var allRecords: [ExecutionRecord]
 
-    init(sop: SOP) {
-        self.sop = sop
-        let sopID = sop.id
-        let predicate = #Predicate<ExecutionRecord> { $0.sop?.id == sopID }
-        _allRecords = Query(filter: predicate, sort: \ExecutionRecord.startedAt, order: .reverse)
+    private var records: [ExecutionRecord] {
+        allRecords.filter { $0.sop?.id == sop.id }
     }
 
     var body: some View {
         List {
-            if allRecords.isEmpty {
+            if records.isEmpty {
                 ContentUnavailableView("No runs yet",
                                        systemImage: "clock",
                                        description: Text("Execute this SOP to log a run."))
             } else {
-                ForEach(allRecords) { record in
+                ForEach(records) { record in
                     NavigationLink(value: record) {
                         recordRow(record)
                     }
