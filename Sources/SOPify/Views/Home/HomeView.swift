@@ -10,6 +10,7 @@ struct HomeView: View {
     @State private var showingNewTempSheet = false
     @State private var editTarget: SOP?
     @State private var searchText = ""
+    @State private var navigationPath = NavigationPath()
 
     private var tempSOPs: [SOP] {
         allSOPs.filter { $0.isOneShot && !$0.isChild }
@@ -31,7 +32,7 @@ struct HomeView: View {
     private let columns = [GridItem(.flexible()), GridItem(.flexible())]
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             List {
                 if !searchText.isEmpty {
                     Section("Search results") {
@@ -82,14 +83,16 @@ struct HomeView: View {
                     Section("Categories") {
                         LazyVGrid(columns: columns, spacing: 12) {
                             ForEach(categories) { cat in
-                                NavigationLink(value: cat) {
+                                Button {
+                                    navigationPath.append(cat)
+                                } label: {
                                     CategoryCardView(category: cat)
                                 }
                                 .buttonStyle(.plain)
                             }
                             if !uncategorizedSOPs.isEmpty {
-                                NavigationLink {
-                                    CategoryDetailView(category: nil, title: "Uncategorized")
+                                Button {
+                                    navigationPath.append(UncategorizedMarker())
                                 } label: {
                                     UncategorizedCardView(count: uncategorizedSOPs.count)
                                 }
@@ -165,9 +168,14 @@ struct HomeView: View {
             .navigationDestination(for: Category.self) { cat in
                 CategoryDetailView(category: cat, title: cat.name)
             }
+            .navigationDestination(for: UncategorizedMarker.self) { _ in
+                CategoryDetailView(category: nil, title: "Uncategorized")
+            }
         }
     }
 }
+
+struct UncategorizedMarker: Hashable {}
 
 #Preview {
     HomeView()
