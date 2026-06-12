@@ -4,7 +4,11 @@ struct FlowStepRow: View {
     let step: Step
     let isCompleted: Bool
     let isCurrent: Bool
+    var isFocused: Bool = false
     let onTap: () -> Void
+    var onDone: (() -> Void)? = nil
+
+    private var isHighlighted: Bool { isCurrent || isFocused }
 
     var body: some View {
         Button(action: onTap) {
@@ -14,8 +18,8 @@ struct FlowStepRow: View {
                         if isCompleted {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(.green)
-                                .font(.system(size: isCurrent ? 28 : 20))
-                        } else if isCurrent {
+                                .font(.system(size: isHighlighted ? 28 : 20))
+                        } else if isHighlighted {
                             Circle()
                                 .fill(Color.accentColor)
                                 .frame(width: 28, height: 28)
@@ -37,31 +41,44 @@ struct FlowStepRow: View {
                     }
                     .frame(width: 32)
 
-                    Text(step.text)
-                        .font(isCurrent ? .title3.weight(.semibold) : .body)
-                        .foregroundStyle(isCompleted ? .secondary : .primary)
-                        .strikethrough(isCompleted)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(step.text)
+                            .font(isHighlighted ? .title3.weight(.semibold) : .body)
+                            .foregroundStyle(isCompleted ? .secondary : .primary)
+                            .strikethrough(isCompleted)
+
+                        if isFocused && !isCompleted, let onDone {
+                            Button(action: onDone) {
+                                Label("Done", systemImage: "checkmark")
+                                    .font(.subheadline.weight(.medium))
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.accentColor)
+                            .padding(.top, 2)
+                        }
+                    }
 
                     Spacer()
                 }
-                .padding(.vertical, isCurrent ? 16 : 8)
+                .padding(.vertical, isHighlighted ? 16 : 8)
                 .padding(.horizontal, 12)
                 .background(
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(isCurrent ? Color.accentColor.opacity(0.08) : Color.clear)
+                        .fill(isHighlighted ? Color.accentColor.opacity(0.08) : Color.clear)
                 )
             }
         }
         .buttonStyle(.plain)
-        .animation(.easeInOut(duration: 0.25), value: isCurrent)
+        .animation(.easeInOut(duration: 0.25), value: isHighlighted)
         .animation(.easeInOut(duration: 0.25), value: isCompleted)
+        .animation(.easeInOut(duration: 0.25), value: isFocused)
     }
 }
 
 #Preview {
     VStack(spacing: 4) {
         FlowStepRow(step: Step(text: "Done step", order: 0), isCompleted: true, isCurrent: false, onTap: {})
-        FlowStepRow(step: Step(text: "Current active step with longer text", order: 1), isCompleted: false, isCurrent: true, onTap: {})
+        FlowStepRow(step: Step(text: "Current step with Done button", order: 1), isCompleted: false, isCurrent: false, isFocused: true, onTap: {}, onDone: {})
         FlowStepRow(step: Step(text: "Future step", order: 2), isCompleted: false, isCurrent: false, onTap: {})
     }
     .padding()

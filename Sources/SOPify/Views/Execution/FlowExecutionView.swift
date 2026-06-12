@@ -9,6 +9,7 @@ struct FlowExecutionView: View {
 
     @State private var record: ExecutionRecord?
     @State private var completedStepIDs: Set<UUID> = []
+    @State private var focusedStepID: UUID?
     @State private var showingFeedback = false
     @State private var feedbackDraft = ""
     @State private var showingOneShotPrompt = false
@@ -25,6 +26,13 @@ struct FlowExecutionView: View {
 
     private var isAllDone: Bool {
         !orderedSteps.isEmpty && completedStepIDs.count == orderedSteps.count
+    }
+
+    private var effectiveFocusID: UUID? {
+        if let focused = focusedStepID, !completedStepIDs.contains(focused) {
+            return focused
+        }
+        return currentStepID
     }
 
     var body: some View {
@@ -50,10 +58,19 @@ struct FlowExecutionView: View {
                             FlowStepRow(
                                 step: step,
                                 isCompleted: isCompleted,
-                                isCurrent: isCurrent
+                                isCurrent: isCurrent,
+                                isFocused: step.id == effectiveFocusID
                             ) {
                                 withAnimation(.easeInOut(duration: 0.3)) {
-                                    toggle(step)
+                                    if isCompleted {
+                                        uncomplete(step)
+                                    } else {
+                                        focusedStepID = step.id
+                                    }
+                                }
+                            } onDone: {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    completeUpTo(step)
                                 }
                             }
                             .id(step.id)
@@ -134,32 +151,36 @@ struct FlowExecutionView: View {
         record = r
     }
 
-    private func toggle(_ step: Step) {
+    private func uncomplete(_ step: Step) {
         guard let record else { return }
-        if completedStepIDs.contains(step.id) {
-            completedStepIDs.remove(step.id)
-            if let latest = record.completions
-                .filter({ $0.stepId == step.id })
-                .sorted(by: { $0.completedAt > $1.completedAt })
-                .first {
-                context.delete(latest)
-            }
-        } else {
-            for preceding in orderedSteps {
-                if preceding.id == step.id { break }
-                if !completedStepIDs.contains(preceding.id) {
-                    completedStepIDs.insert(preceding.id)
-                    let c = StepCompletion(stepId: preceding.id, completedAt: .now)
-                    c.record = record
-                    context.insert(c)
-                }
-            }
-            completedStepIDs.insert(step.id)
-            let completion = StepCompletion(stepId: step.id, completedAt: .now)
-            completion.record = record
-            context.insert(completion)
+        completedStepIDs.remove(step.id)
+        if let latest = record.completions
+            .filter({ $0.stepId == step.id })
+            .sorted(by: { $0.completedAt > $1.completedAt })
+            .first {
+            context.delete(latest)
         }
         try? context.save()
+        focusedStepID = nil
+    }
+
+    private func completeUpTo(_ step: Step) {
+        guard let record else { return }
+        for preceding in orderedSteps {
+            if preceding.id == step.id { break }
+            if !completedStepIDs.contains(preceding.id) {
+                completedStepIDs.insert(preceding.id)
+                let c = StepCompletion(stepId: preceding.id, completedAt: .now)
+                c.record = record
+                context.insert(c)
+            }
+        }
+        completedStepIDs.insert(step.id)
+        let completion = StepCompletion(stepId: step.id, completedAt: .now)
+        completion.record = record
+        context.insert(completion)
+        try? context.save()
+        focusedStepID = nil
     }
 
     private func complete(_ step: Step) {
